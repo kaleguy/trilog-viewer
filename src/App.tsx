@@ -1,21 +1,27 @@
 import { useState } from 'react';
 import Database from '@tauri-apps/plugin-sql';
 import { open } from '@tauri-apps/plugin-dialog';
+import { MoodChart } from './views/MoodChart';
+import { Placeholder } from './views/Placeholder';
 import './App.css';
 
-interface EntryCount {
-  total: number;
-  withJournal: number;
-  withPhoto: number;
-}
+type Tab = 'mood' | 'metrics' | 'habits' | 'trackers';
 
 interface DbState {
   path: string;
-  counts: EntryCount;
+  conn: Awaited<ReturnType<typeof Database.load>>;
 }
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'mood', label: 'Mood Chart' },
+  { id: 'metrics', label: 'Metrics' },
+  { id: 'habits', label: 'Habits' },
+  { id: 'trackers', label: 'Trackers' },
+];
 
 function App() {
   const [db, setDb] = useState<DbState | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('mood');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,23 +37,7 @@ function App() {
     setLoading(true);
     try {
       const conn = await Database.load(`sqlite:${selected}`);
-      const totalRows = await conn.select<{ n: number }[]>(
-        'SELECT COUNT(*) AS n FROM day_entries'
-      );
-      const journalRows = await conn.select<{ n: number }[]>(
-        "SELECT COUNT(*) AS n FROM day_entries WHERE journalEntry IS NOT NULL AND TRIM(journalEntry) != ''"
-      );
-      const photoRows = await conn.select<{ n: number }[]>(
-        'SELECT COUNT(*) AS n FROM day_entries WHERE photoUri IS NOT NULL OR photoAssetId IS NOT NULL'
-      );
-      setDb({
-        path: selected,
-        counts: {
-          total: totalRows[0]?.n ?? 0,
-          withJournal: journalRows[0]?.n ?? 0,
-          withPhoto: photoRows[0]?.n ?? 0,
-        },
-      });
+      setDb({ path: selected, conn });
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -55,36 +45,54 @@ function App() {
     }
   };
 
-  return (
-    <main className="container">
-      <h1>TriLog Viewer</h1>
+  const closeDb = async () => {
+    if (db) {
+      try { await db.conn.close(); } catch { /* ignore */ }
+    }
+    setDb(null);
+  };
 
-      {!db && !loading && (
+  if (!db) {
+    return (
+      <main className="container">
+        <h1>TriLog Viewer</h1>
         <div className="card">
           <p>Open a <code>journal.db</code> exported from TriLog.</p>
-          <button type="button" onClick={openDb}>Open Database…</button>
+          <button type="button" onClick={openDb} disabled={loading}>
+            {loading ? 'Loading…' : 'Open Database…'}
+          </button>
           {error && <p className="error">{error}</p>}
         </div>
-      )}
+      </main>
+    );
+  }
 
-      {loading && (
-        <div className="card">
-          <p>Loading…</p>
-        </div>
-      )}
+  return (
+    <div className="app-shell">
+      <header className="app-header">
+        <h1 className="app-title">TriLog Viewer</h1>
+        <nav className="app-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`tab ${activeTab === t.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <button className="close-db" type="button" onClick={closeDb}>Close</button>
+      </header>
 
-      {db && (
-        <div className="card">
-          <p className="path">{db.path}</p>
-          <ul className="stats">
-            <li><strong>{db.counts.total}</strong> entries total</li>
-            <li><strong>{db.counts.withJournal}</strong> with journal text</li>
-            <li><strong>{db.counts.withPhoto}</strong> with photo reference</li>
-          </ul>
-          <button type="button" onClick={() => setDb(null)}>Open another</button>
-        </div>
-      )}
-    </main>
+      <main className="app-content">
+        {activeTab === 'mood' && <MoodChart conn={db.conn} />}
+        {activeTab === 'metrics' && <Placeholder title="Metrics" />}
+        {activeTab === 'habits' && <Placeholder title="Habits" />}
+        {activeTab === 'trackers' && <Placeholder title="Trackers" />}
+      </main>
+    </div>
   );
 }
 

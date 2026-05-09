@@ -1,0 +1,301 @@
+.moodchart {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
+  color: #f0f0f0;
+}
+
+.moodchart-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.toggle-group {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.toggle {
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #f0f0f0;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.toggle + .toggle {
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.toggle.active {
+  background: #00cc55;
+  color: #000;
+}
+
+.notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #ccc;
+}
+
+.date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.date-nav button {
+  padding: 4px 10px;
+  font-size: 14px;
+  background: transparent;
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.date-nav button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.date-range {
+  font-size: 13px;
+  color: #aaa;
+  min-width: 180px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.loading {
+  font-size: 12px;
+  color: #888;
+}
+
+.chart-scroll {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #000;
+}
+
+.chart-grid {
+  display: flex;
+  height: 100%;
+  min-height: 700px;
+  position: relative;
+}
+
+.chart-yaxis {
+  display: flex;
+  flex-direction: column;
+  width: 44px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chart-yaxis-track {
+  position: relative;
+  flex: 1;
+}
+
+/* Spacer that mirrors .day-footer's height so the y-axis labels line up
+   with the day-track (which sits above the day-footer) instead of with
+   the full grid height. */
+.chart-yaxis-footer-spacer {
+  height: 36px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chart-yaxis-label {
+  position: absolute;
+  right: 8px;
+  font-size: 10px;
+  color: #888;
+  transform: translateY(-50%);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-columns {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+/* Reference lines at 3am, noon, 6pm — span the full day-track height
+   (top:0 to bottom:36px above the day-footer) across every column. */
+.time-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 36px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.time-grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.day-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #000;
+  background: #000;
+}
+
+/* Track holds 1-3 sub-columns (mood, energy, activity) plus a notes overlay
+   on top. Sub-columns are equal-width via grid; entries within each are
+   absolutely positioned along the time axis. */
+.day-track {
+  position: relative;
+  flex: 1;
+  display: grid;
+  gap: 0;
+}
+
+/* Sub-columns are the off-black sub-tracks within each day. The vertical
+   gradient simulates the iOS chart's daylight tint: a slight lift between
+   ~5:30am and 6:30pm (with 30-min twilight fades at sunrise/sunset),
+   sharper black for night hours. Defaults match iOS's no-sun-data fallback. */
+.subcol {
+  position: relative;
+  height: 100%;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0) 22.92%,
+      rgba(255, 255, 255, 0.06) 25%,
+      rgba(255, 255, 255, 0.06) 75%,
+      rgba(255, 255, 255, 0) 77.08%,
+      rgba(255, 255, 255, 0) 100%
+    ),
+    #0f0f0f;
+}
+
+/* Tiny separator between sub-columns so the three tracks read as adjacent
+   but distinct (matches the COLUMN_SEPARATOR_WIDTH in the iOS chart). */
+.day-track > .subcol + .subcol {
+  border-left: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.day-column.today .subcol {
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(0, 255, 0, 0) 0%,
+      rgba(0, 255, 0, 0) 22.92%,
+      rgba(0, 255, 0, 0.20) 25%,
+      rgba(0, 255, 0, 0.20) 75%,
+      rgba(0, 255, 0, 0) 77.08%,
+      rgba(0, 255, 0, 0) 100%
+    ),
+    rgba(0, 255, 0, 0.10);
+}
+
+/* Activity bar fills its sub-column horizontally with a small inset on each
+   side so adjacent days don't visually merge. */
+.activity-bar {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  border-radius: 1px;
+  opacity: 0.95;
+  z-index: 1;
+}
+
+.activity-bar.gap-fill {
+  opacity: 0.55;
+}
+
+.activity-bar:hover {
+  opacity: 1;
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* Mood / energy circles centered horizontally within their own sub-column. */
+.circle {
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  cursor: default;
+}
+
+.circle:hover {
+  transform: translate(-50%, -50%) scale(1.4);
+  z-index: 5;
+}
+
+.notes-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.note-marker {
+  position: absolute;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  background: #ffffff;
+  color: #111;
+}
+
+.note-marker.circular {
+  border-radius: 50%;
+}
+
+.note-marker:hover {
+  transform: translate(-50%, -50%) scale(1.4);
+  z-index: 6;
+}
+
+.day-footer {
+  height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 1px;
+}
+
+.day-num {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.day-name {
+  font-size: 10px;
+  color: #888;
+}
