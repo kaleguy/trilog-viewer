@@ -3,13 +3,16 @@ import Database from '@tauri-apps/plugin-sql';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Menu } from 'lucide-react';
 import { MoodChart } from './views/MoodChart';
+import { Metrics } from './views/Metrics';
+import { LifeCalendar } from './views/LifeCalendar';
 import { Placeholder } from './views/Placeholder';
 import { SettingsModal, type ViewerSettings } from './views/SettingsModal';
 import { AboutModal } from './views/AboutModal';
+import { ErrorBoundary } from './views/ErrorBoundary';
 import { getAppSettings } from './db/queries';
 import './App.css';
 
-type Tab = 'mood' | 'metrics' | 'habits' | 'trackers';
+type Tab = 'mood' | 'metrics' | 'habits' | 'trackers' | 'life';
 
 interface DbState {
   path: string;
@@ -17,11 +20,12 @@ interface DbState {
   settings: Record<string, string>;
 }
 
-const TABS: { id: Tab; label: string }[] = [
+const ALL_TABS: { id: Tab; label: string }[] = [
   { id: 'mood', label: 'Mood Chart' },
   { id: 'metrics', label: 'Metrics' },
   { id: 'habits', label: 'Habits' },
   { id: 'trackers', label: 'Trackers' },
+  { id: 'life', label: 'Life' },
 ];
 
 function App() {
@@ -37,6 +41,7 @@ function App() {
     showCycles: false,
     showWeather: false,
     showMoonPhases: false,
+    showLifeCalendar: false,
   });
 
   // Click anywhere outside the hamburger menu (or press Escape) closes it.
@@ -75,11 +80,14 @@ function App() {
       // Seed the viewer's settings from the snapshot the iOS app stamped
       // into the bundle. Falls back to false if a key is missing (older
       // bundles or never-set toggles).
-      setViewerSettings({
+      setViewerSettings((prev) => ({
         showCycles: settings.showCycles === 'true',
         showWeather: settings.showWeather === 'true',
         showMoonPhases: settings.showMoonPhases === 'true',
-      });
+        // Appearance toggles are viewer-local (not in app_settings); keep
+        // whatever the user already chose this session.
+        showLifeCalendar: prev.showLifeCalendar,
+      }));
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -113,12 +121,23 @@ function App() {
     ? new Date(parseInt(db.settings.exportedAt, 10))
     : null;
 
+  // Filter the tab list by appearance toggles, then redirect away from a
+  // hidden active tab.
+  const visibleTabs = ALL_TABS.filter((t) =>
+    t.id === 'life' ? viewerSettings.showLifeCalendar : true
+  );
+  if (!visibleTabs.some((t) => t.id === activeTab)) {
+    // If the user disables the active tab while it's selected, fall back
+    // to the first visible one (always present since 'mood' is always on).
+    queueMicrotask(() => setActiveTab(visibleTabs[0].id));
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <h1 className="app-title">TriLog Viewer</h1>
         <nav className="app-tabs">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -178,16 +197,19 @@ function App() {
       </header>
 
       <main className="app-content">
-        {activeTab === 'mood' && (
-          <MoodChart
-            conn={db.conn}
-            settings={db.settings}
-            viewerSettings={viewerSettings}
-          />
-        )}
-        {activeTab === 'metrics' && <Placeholder title="Metrics" />}
-        {activeTab === 'habits' && <Placeholder title="Habits" />}
-        {activeTab === 'trackers' && <Placeholder title="Trackers" />}
+        <ErrorBoundary key={activeTab}>
+          {activeTab === 'mood' && (
+            <MoodChart
+              conn={db.conn}
+              settings={db.settings}
+              viewerSettings={viewerSettings}
+            />
+          )}
+          {activeTab === 'metrics' && <Metrics conn={db.conn} />}
+          {activeTab === 'habits' && <Placeholder title="Habits" />}
+          {activeTab === 'trackers' && <Placeholder title="Trackers" />}
+          {activeTab === 'life' && <LifeCalendar />}
+        </ErrorBoundary>
       </main>
 
       <SettingsModal

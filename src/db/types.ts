@@ -48,6 +48,58 @@ export interface HistoricalWeather {
   isDaytime: boolean;
 }
 
+/**
+ * Subset of `day_entries` columns used by the Metrics grid. Pulled
+ * directly via SELECT from the bundled DB; null fields just render
+ * as "—" in the grid.
+ */
+export interface DayEntryRow {
+  dateKey: string;
+  mood: string | null;
+  energy: number | null;
+  onLevel: number | null;
+  wellnessLevel: number | null;
+  steps: number | null;
+  restingHeartRate: number | null;
+  avgBodyWeight: number | null;
+  hrv: number | null;
+  sleepQuality: number | null;
+  sleepOnset: number | null;
+  sleepWakeFeel: number | null;
+  sleepWakeUps: number | null;
+  sleepDurationHours: number | null;
+  sleepDurationMinutes: number | null;
+  sleepInsomniaMinutes: number | null;
+  hkSleepDuration: number | null; // minutes
+  hkDeepSleep: number | null;
+  hkRemSleep: number | null;
+  pressureData: string | null;
+  pollenData: string | null;
+  airQualityData: string | null;
+  uvData: string | null;
+}
+
+// JSON shapes for the environmental columns. Mirrors the iOS app's
+// schema. Color fields are hex strings populated server-side.
+export interface PressureData {
+  pressure_mean_hPa: number | null;
+  pressure_trend: 'rising' | 'falling' | 'steady' | null;
+}
+
+export interface PollenDay {
+  overall: number; // 0-5 severity
+}
+
+export interface AirQualityDay {
+  aqi: number;
+  aqiColor: string;
+}
+
+export interface UvDay {
+  uvIndex: number;
+  uvColor: string;
+}
+
 // Cycle color names → muted hex values, copied from the iOS chart's
 // `getCycleColorStyle`. Keep in sync if the iPhone palette changes.
 export const CYCLE_COLOR_MAP: Record<string, string> = {

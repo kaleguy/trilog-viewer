@@ -1,0 +1,199 @@
+.life-calendar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
+  color: #f0f0f0;
+  overflow: auto;
+}
+
+.life-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.life-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.life-stats {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+}
+
+.life-edit-btn {
+  background: transparent;
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.life-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Axis layout. The top axis sits above the body. The body is a flex row:
+   left week-labels column + the cell grid. The grid is 100% wide so the
+   square cells fill the available horizontal space. */
+
+.life-axis-top {
+  display: flex;
+}
+
+.life-corner {
+  width: 36px;
+  flex-shrink: 0;
+}
+
+.life-year-row {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(100, 1fr);
+  gap: 1px;
+}
+
+.life-year-label {
+  font-size: 9px;
+  color: #777;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  height: 14px;
+  line-height: 14px;
+}
+
+.life-body {
+  display: flex;
+  align-items: stretch;
+}
+
+.life-week-col {
+  width: 36px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-rows: repeat(52, 1fr);
+  gap: 1px;
+}
+
+.life-week-label {
+  font-size: 9px;
+  color: #777;
+  text-align: right;
+  padding-right: 6px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.life-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(100, 1fr);
+  grid-template-rows: repeat(52, auto);
+  gap: 1px;
+}
+
+.life-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 1px;
+  background: #1f1f1f;
+}
+
+.life-cell.lived {
+  background: #00cc55;
+}
+
+.life-cell.current {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #00cc55;
+}
+
+/* Empty state ---------------------------------------------------------- */
+
+.life-empty {
+  max-width: 480px;
+  margin: 24px auto;
+  padding: 24px;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #f0f0f0;
+}
+
+.life-empty h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.life-empty p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #d0d0d0;
+  line-height: 1.55;
+}
+
+.life-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.life-label {
+  font-size: 13px;
+  color: #aaa;
+}
+
+.life-form input[type='number'] {
+  background: #0d0d0d;
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color-scheme: dark;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.life-form input.life-year {
+  width: 70px;
+}
+
+.life-form input.life-md {
+  width: 48px;
+}
+
+.life-sep {
+  color: #555;
+}
+
+.life-form button {
+  padding: 6px 14px;
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+.life-error {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #ff6b6b;
+}
+
+.life-privacy {
+  font-size: 11px;
+  color: #777;
+  margin: 0;
+}

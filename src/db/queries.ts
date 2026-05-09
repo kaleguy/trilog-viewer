@@ -1,6 +1,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import type {
   ActivityEntry,
+  DayEntryRow,
   EnergyEntry,
   HistoricalWeather,
   MoodEntry,
@@ -100,6 +101,53 @@ export async function getCycleNotes(
     isHealth: !!r.isHealth,
     isCycle: !!r.isCycle,
   }));
+}
+
+export async function getDayEntriesRange(
+  conn: Conn,
+  startDateKey: string,
+  endDateKey: string
+): Promise<DayEntryRow[]> {
+  return conn.select<DayEntryRow[]>(
+    `SELECT
+       dateKey, mood, energy, onLevel, wellnessLevel,
+       steps, restingHeartRate, avgBodyWeight, hrv,
+       sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
+       sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
+       hkSleepDuration, hkDeepSleep, hkRemSleep,
+       pressureData, pollenData, airQualityData, uvData
+     FROM day_entries
+     WHERE dateKey >= ? AND dateKey <= ?`,
+    [startDateKey, endDateKey]
+  );
+}
+
+/**
+ * Pomodoro completions per day. The pomodoro_entries table may be
+ * absent on older bundles — fall back to an empty array.
+ */
+export async function getPomodoroCountsRange(
+  conn: Conn,
+  sinceMs: number,
+  untilMs: number
+): Promise<{ dateKey: string; count: number }[]> {
+  try {
+    const rows = await conn.select<{ id: string; timestamp: number }[]>(
+      `SELECT id, timestamp FROM pomodoro_entries
+       WHERE timestamp >= ? AND timestamp < ?`,
+      [sinceMs, untilMs]
+    );
+    const tally = new Map<string, number>();
+    for (const r of rows) {
+      const d = new Date(r.timestamp);
+      const k =
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      tally.set(k, (tally.get(k) ?? 0) + 1);
+    }
+    return Array.from(tally.entries()).map(([dateKey, count]) => ({ dateKey, count }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getHistoricalWeatherRange(
