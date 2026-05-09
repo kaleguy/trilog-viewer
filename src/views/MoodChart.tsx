@@ -2,26 +2,34 @@ import { useEffect, useMemo, useState } from 'react';
 import { Utensils, HeartPulse, Droplet, FileText, BarChart3 } from 'lucide-react';
 import {
   getActivityEntries,
+  getCycleNotes,
   getEnergyEntries,
+  getHistoricalWeatherRange,
   getMoodEntries,
   getNoteEntries,
   type Conn_,
 } from '../db/queries';
 import {
   activityColor,
+  cycleColor,
   ENERGY_COLORS,
   MOOD_COLORS,
   type ActivityEntry,
   type EnergyEntry,
+  type HistoricalWeather,
   type MoodEntry,
   type NoteEntry,
 } from '../db/types';
+import { pickWeatherIcon } from './weatherIcon';
+import { moonSpriteStyle } from './moonPhase';
 import './MoodChart.css';
 
 type VisibilityState = 'all' | 'mood' | 'energy' | 'activity';
 
 interface Props {
   conn: Conn_;
+  settings: Record<string, string>;
+  viewerSettings: { showCycles: boolean; showWeather: boolean; showMoonPhases: boolean };
 }
 
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -30,6 +38,14 @@ const DEFAULT_DAYS_ALL = 30;
 const DEFAULT_DAYS_SINGLE = 90;
 const DEFAULT_ACTIVITY_HOURS = 1;
 const MIN_BAR_HEIGHT_PCT = 0.3;
+const CYCLE_PHASE_DAYS = 7;
+const CYCLE_LOOKBACK_DAYS = 30; // pull cycle notes from before the visible
+                                // window so a phase that started earlier
+                                // still paints its remaining days
+const WEATHER_ROW_PX = 36;
+const CYCLE_ROW_PX = 14;
+const MOON_ROW_PX = 22;
+const MOON_ICON_PX = 18;
 
 function startOfLocalDay(date: Date): Date {
   const d = new Date(date);
@@ -121,7 +137,12 @@ function bucketByDay(
   return buckets;
 }
 
-export function MoodChart({ conn }: Props) {
+export function MoodChart({ conn, settings, viewerSettings }: Props) {
+  // settings: read-only snapshot from the bundle (lat/lng for future
+  // sun-times, theme, etc.). Currently unused on the chart side — the
+  // header label in App.tsx is the only consumer.
+  void settings;
+
   const [visibility, setVisibility] = useState<VisibilityState>('all');
   const [showNotes, setShowNotes] = useState(true);
   const [endDate, setEndDate] = useState<Date>(() => startOfLocalDay(new Date()));
@@ -129,6 +150,8 @@ export function MoodChart({ conn }: Props) {
   const [energies, setEnergies] = useState<EnergyEntry[]>([]);
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [notes, setNotes] = useState<NoteEntry[]>([]);
+  const [cycles, setCycles] = useState<NoteEntry[]>([]);
+  const [weather, setWeather] = useState<HistoricalWeather[]>([]);
   const [loading, setLoading] = useState(false);
 
   // 30 days when all 3 metrics are visible (3 sub-cols × 30 = 90 narrow cols).
@@ -152,20 +175,30 @@ export function MoodChart({ conn }: Props) {
     let cancelled = false;
     setLoading(true);
     // Fetch a wider window for activities so cross-day extension at the edges
-    // has neighbors to anchor to.
+    // has neighbors to anchor to. Cycles get an even wider lookback so a
+    // phase that started before the visible range still paints its tail.
     const padMs = 2 * MS_PER_DAY;
+    const cycleLookbackMs = CYCLE_LOOKBACK_DAYS * MS_PER_DAY;
     Promise.all([
       getMoodEntries(conn, startMs, endMs),
       getEnergyEntries(conn, startMs, endMs),
       getActivityEntries(conn, startMs - padMs, endMs + padMs),
       getNoteEntries(conn, startMs, endMs),
+      getCycleNotes(conn, startMs - cycleLookbackMs, endMs),
+      getHistoricalWeatherRange(
+        conn,
+        dateKey(new Date(startMs)),
+        dateKey(new Date(endMs - 1))
+      ),
     ])
-      .then(([m, e, a, n]) => {
+      .then(([m, e, a, n, c, w]) => {
         if (cancelled) return;
         setMoods(m);
         setEnergies(e);
         setActivities(computeEffectiveEnds(a));
         setNotes(n);
+        setCycles(c);
+        setWeather(w);
       })
       .catch((err) => console.error('[MoodChart] query failed', err))
       .finally(() => {
@@ -178,6 +211,33 @@ export function MoodChart({ conn }: Props) {
     () => bucketByDay(days, moods, energies, activities, notes),
     [days, moods, energies, activities, notes]
   );
+
+  // dateKey → cycle phase color. Each cycle note's phase runs for
+  // CYCLE_PHASE_DAYS days OR until the next cycle note's day, whichever
+  // is sooner. Computed once per cycles change.
+  const cycleByDate = useMemo(() => {
+    const m = new Map<string, string>();
+    const sorted = [...cycles].sort((a, b) => a.timestamp - b.timestamp);
+    for (let i = 0; i < sorted.length; i++) {
+      const start = startOfLocalDay(new Date(sorted[i].timestamp));
+      const next = sorted[i + 1] ? startOfLocalDay(new Date(sorted[i + 1].timestamp)) : null;
+      const defaultEnd = new Date(start);
+      defaultEnd.setDate(defaultEnd.getDate() + CYCLE_PHASE_DAYS);
+      const end = next && next.getTime() < defaultEnd.getTime() ? next : defaultEnd;
+      const cursor = new Date(start);
+      while (cursor.getTime() < end.getTime()) {
+        m.set(dateKey(cursor), cycleColor(sorted[i].cycleColor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return m;
+  }, [cycles]);
+
+  const weatherByDate = useMemo(() => {
+    const m = new Map<string, HistoricalWeather>();
+    for (const w of weather) m.set(w.dateKey, w);
+    return m;
+  }, [weather]);
 
   const showMood = visibility === 'all' || visibility === 'mood';
   const showEnergy = visibility === 'all' || visibility === 'energy';
@@ -243,6 +303,11 @@ export function MoodChart({ conn }: Props) {
         showEnergy={showEnergy}
         showActivity={showActivity}
         showNotes={showNotes}
+        showCycles={viewerSettings.showCycles}
+        showWeather={viewerSettings.showWeather}
+        showMoonPhases={viewerSettings.showMoonPhases}
+        cycleByDate={cycleByDate}
+        weatherByDate={weatherByDate}
       />
     </div>
   );
@@ -254,25 +319,47 @@ interface ChartGridProps {
   showEnergy: boolean;
   showActivity: boolean;
   showNotes: boolean;
+  showCycles: boolean;
+  showWeather: boolean;
+  showMoonPhases: boolean;
+  cycleByDate: Map<string, string>;
+  weatherByDate: Map<string, HistoricalWeather>;
 }
 
-const HOUR_LABELS = [3, 6, 9, 12, 15, 18, 21];
+const HOUR_LABELS = [3, 6, 9, 12, 15, 18, 21, 24];
 
 function fmtHour(h: number): string {
-  if (h === 0 || h === 24) return '12AM';
-  if (h === 12) return '12PM';
-  if (h < 12) return `${h}AM`;
-  return `${h - 12}PM`;
+  if (h === 0 || h === 24) return '12 AM';
+  if (h === 12) return '12 PM';
+  if (h < 12) return `${h} AM`;
+  return `${h - 12} PM`;
 }
 
-function ChartGrid({ buckets, showMood, showEnergy, showActivity, showNotes }: ChartGridProps) {
+function labelTransform(h: number): string {
+  // Anchor the very-bottom label by its bottom edge so it sits inside the
+  // chart instead of bleeding into the day-footer below. The very-top
+  // label (if we ever add it) would anchor by its top edge for the same
+  // reason. Mid-axis labels stay vertically centered on their tick.
+  if (h === 24) return 'translateY(-100%)';
+  if (h === 0) return 'translateY(0)';
+  return 'translateY(-50%)';
+}
+
+function ChartGrid({
+  buckets, showMood, showEnergy, showActivity, showNotes,
+  showCycles, showWeather, showMoonPhases, cycleByDate, weatherByDate,
+}: ChartGridProps) {
   const visibleCount = (showMood ? 1 : 0) + (showEnergy ? 1 : 0) + (showActivity ? 1 : 0);
   const subColumns = Math.max(visibleCount, 1);
   const todayMs = startOfLocalDay(new Date()).getTime();
-  // Each sub-column needs ~18px to show a 14px circle comfortably; scale day
-  // min-width by the number of visible sub-columns so single-view stays
-  // narrow and "all"-view doesn't squish the circles.
   const dayMinWidth = subColumns * 18;
+
+  // Day column stack from top to bottom: day-track | date | moon | weather
+  // | cycle. Cycle moved to the bottom alongside the other ancillary
+  // strips so all per-day chrome lives in the same footer block.
+  const weatherH = showWeather ? WEATHER_ROW_PX : 0;
+  const cycleH = showCycles ? CYCLE_ROW_PX : 0;
+  const moonH = showMoonPhases ? MOON_ROW_PX : 0;
 
   return (
     <div className="chart-scroll">
@@ -283,13 +370,22 @@ function ChartGrid({ buckets, showMood, showEnergy, showActivity, showNotes }: C
               <div
                 key={h}
                 className="chart-yaxis-label"
-                style={{ top: `${(h / 24) * 100}%` }}
+                style={{ top: `${(h / 24) * 100}%`, transform: labelTransform(h) }}
               >
                 {fmtHour(h)}
               </div>
             ))}
           </div>
           <div className="chart-yaxis-footer-spacer" />
+          {moonH > 0 && (
+            <div className="chart-yaxis-moon-spacer" style={{ height: moonH }} />
+          )}
+          {weatherH > 0 && (
+            <div className="chart-yaxis-weather-spacer" style={{ height: weatherH }} />
+          )}
+          {cycleH > 0 && (
+            <div className="chart-yaxis-cycle-spacer" style={{ height: cycleH }} />
+          )}
         </div>
 
         <div className="chart-columns">
@@ -304,12 +400,19 @@ function ChartGrid({ buckets, showMood, showEnergy, showActivity, showNotes }: C
               showNotes={showNotes}
               subColumns={subColumns}
               minWidth={dayMinWidth}
+              weather={showWeather ? weatherByDate.get(b.key) : undefined}
+              cycleColorHex={showCycles ? cycleByDate.get(b.key) : undefined}
+              weatherRowH={weatherH}
+              cycleRowH={cycleH}
+              moonRowH={moonH}
             />
           ))}
-          {/* Light horizontal reference lines at 3am, 12pm, 6pm — same as
-              the iOS chart. Positioned outside the day columns so they
-              span all of them and stay aligned across the chart. */}
-          <div className="time-grid">
+          {/* Reference lines pinned to the day-track area only. Stop them
+              above the date footer + moon + weather + cycle strips below. */}
+          <div
+            className="time-grid"
+            style={{ top: 0, bottom: 36 + moonH + weatherH + cycleH }}
+          >
             <div className="time-grid-line" style={{ top: `${(3 / 24) * 100}%` }} />
             <div className="time-grid-line" style={{ top: `${(12 / 24) * 100}%` }} />
             <div className="time-grid-line" style={{ top: `${(18 / 24) * 100}%` }} />
@@ -329,10 +432,17 @@ interface DayColumnProps {
   showNotes: boolean;
   subColumns: number;
   minWidth: number;
+  weather?: HistoricalWeather;
+  cycleColorHex?: string;
+  weatherRowH: number;
+  cycleRowH: number;
+  moonRowH: number;
 }
 
 function DayColumn({
-  bucket, isToday, showMood, showEnergy, showActivity, showNotes, subColumns, minWidth,
+  bucket, isToday, showMood, showEnergy, showActivity, showNotes,
+  subColumns, minWidth, weather, cycleColorHex,
+  weatherRowH, cycleRowH, moonRowH,
 }: DayColumnProps) {
   const { date } = bucket;
   const dayStart = startOfLocalDay(date).getTime();
@@ -423,12 +533,64 @@ function DayColumn({
         )}
       </div>
 
-      <div className="day-footer">
+      <div
+        className="day-footer"
+        title={date.toLocaleDateString(undefined, {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })}
+      >
         <div className="day-num">{date.getDate()}</div>
         <div className="day-name">
           {date.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2)}
         </div>
       </div>
+      {moonRowH > 0 && (
+        <div className="day-moon" style={{ height: moonRowH }}>
+          <div
+            className="moon-icon"
+            style={moonSpriteStyle(date, MOON_ICON_PX)}
+            title={date.toDateString()}
+          />
+        </div>
+      )}
+      {weatherRowH > 0 && (
+        <div className="day-weather" style={{ height: weatherRowH }}>
+          {weather && <WeatherCell weather={weather} />}
+        </div>
+      )}
+      {cycleRowH > 0 && (
+        <div className="day-cycle" style={{ height: cycleRowH }}>
+          {cycleColorHex && (
+            <div className="cycle-bar" style={{ backgroundColor: cycleColorHex }} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface WeatherCellProps {
+  weather: HistoricalWeather;
+}
+
+function WeatherCell({ weather }: WeatherCellProps) {
+  const Icon = pickWeatherIcon(weather.shortForecast);
+  const t = weather.temperature;
+  const u = weather.temperatureUnit ?? '°';
+  const tooltip = `${weather.shortForecast}${
+    t != null ? ` · ${t}°${u}` : ''
+  }${
+    weather.precipProb != null && weather.precipProb > 0
+      ? ` · ${Math.round(weather.precipProb * 100)}% precip`
+      : ''
+  }`;
+  return (
+    <div className="weather-cell" title={tooltip}>
+      <Icon size={18} strokeWidth={1.8} />
+      {t != null && <span className="weather-temp">{t}°</span>}
     </div>
   );
 }

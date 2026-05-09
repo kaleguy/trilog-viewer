@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import type {
   ActivityEntry,
   EnergyEntry,
+  HistoricalWeather,
   MoodEntry,
   NoteEntry,
 } from './types';
@@ -73,6 +74,73 @@ export async function getNoteEntries(
     isHealth: !!r.isHealth,
     isCycle: !!r.isCycle,
   }));
+}
+
+/**
+ * Cycle notes only — used to draw the cycle phase strip above the chart.
+ * Pulled separately (and with a wider window than the visible chart) so
+ * a phase that started before the visible range still gets rendered for
+ * its remaining days.
+ */
+export async function getCycleNotes(
+  conn: Conn,
+  sinceMs: number,
+  untilMs: number
+): Promise<NoteEntry[]> {
+  const rows = await conn.select<any[]>(
+    `SELECT id, timestamp, text, isMeal, isHealth, isCycle, cycleColor, calories
+     FROM note_entries
+     WHERE isCycle = 1 AND timestamp >= ? AND timestamp < ?
+     ORDER BY timestamp ASC`,
+    [sinceMs, untilMs]
+  );
+  return rows.map((r) => ({
+    ...r,
+    isMeal: !!r.isMeal,
+    isHealth: !!r.isHealth,
+    isCycle: !!r.isCycle,
+  }));
+}
+
+export async function getHistoricalWeatherRange(
+  conn: Conn,
+  startDateKey: string,
+  endDateKey: string
+): Promise<HistoricalWeather[]> {
+  try {
+    const rows = await conn.select<any[]>(
+      `SELECT dateKey, timestamp, temperature, temperatureUnit, precipProb, shortForecast, isDaytime
+       FROM historical_weather
+       WHERE dateKey >= ? AND dateKey <= ?
+       ORDER BY dateKey ASC`,
+      [startDateKey, endDateKey]
+    );
+    return rows.map((r) => ({ ...r, isDaytime: !!r.isDaytime }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read the `app_settings` snapshot the iOS app writes into the DB at
+ * export time. Returns an empty object if the table doesn't exist
+ * (older bundles) or any rows are missing.
+ */
+export async function getAppSettings(conn: Conn): Promise<Record<string, string>> {
+  try {
+    const rows = await conn.select<{ key: string; value: string | null }[]>(
+      'SELECT key, value FROM app_settings'
+    );
+    const out: Record<string, string> = {};
+    for (const r of rows) {
+      if (r.value != null) out[r.key] = r.value;
+    }
+    return out;
+  } catch {
+    // Table likely doesn't exist on bundles exported before app_settings
+    // was introduced. Caller should fall back to defaults.
+    return {};
+  }
 }
 
 export async function getOverallTimeRange(

@@ -1,0 +1,512 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="544" height="576" viewBox="0 0 544 576">
+<g transform="translate(52.0,92.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 36.0 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 36.0 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 0</text>
+</g>
+<g transform="translate(140.0,92.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.18820006121801 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.18820006121801 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 1</text>
+</g>
+<g transform="translate(228.0,92.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 32.78941241935018 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 32.78941241935018 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 2</text>
+</g>
+<g transform="translate(316.0,92.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 28.911822388886478 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 28.911822388886478 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 3</text>
+</g>
+<g transform="translate(404.0,92.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 23.730309267013116 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 23.730309267013116 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 4</text>
+</g>
+<g transform="translate(492.0,92.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 17.478559277904253 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 17.478559277904253 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 5</text>
+</g>
+<g transform="translate(52.0,204.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 10.438526324806503 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 10.438526324806503 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 6</text>
+</g>
+<g transform="translate(140.0,204.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 2.927715869961409 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 2.927715869961409 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 7</text>
+</g>
+<g transform="translate(228.0,204.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 4.71513456066177 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 4.71513456066177 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 8</text>
+</g>
+<g transform="translate(316.0,204.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 12.14533243863529 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 12.14533243863529 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 9</text>
+</g>
+<g transform="translate(404.0,204.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 19.027775864932646 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 19.027775864932646 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 10</text>
+</g>
+<g transform="translate(492.0,204.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 25.052066664434996 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 25.052066664434996 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 11</text>
+</g>
+<g transform="translate(52.0,316.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 29.946509342573435 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 29.946509342573435 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 12</text>
+</g>
+<g transform="translate(140.0,316.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 33.49036455120991 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 33.49036455120991 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 13</text>
+</g>
+<g transform="translate(228.0,316.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.523804432487566 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.523804432487566 36.0 0 0 0 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 14</text>
+</g>
+<g transform="translate(316.0,316.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.95512085467651 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.95512085467651 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 15</text>
+</g>
+<g transform="translate(404.0,316.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 34.76486144860293 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 34.76486144860293 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 16</text>
+</g>
+<g transform="translate(492.0,316.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 32.00670690943268 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 32.00670690943268 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 17</text>
+</g>
+<g transform="translate(52.0,428.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 27.805049997501843 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 27.805049997501843 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 18</text>
+</g>
+<g transform="translate(140.0,428.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 22.349385425248652 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 22.349385425248652 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 19</text>
+</g>
+<g transform="translate(228.0,428.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 15.885763646327042 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 15.885763646327042 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 20</text>
+</g>
+<g transform="translate(316.0,428.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 8.705693980983545 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 8.705693980983545 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 21</text>
+</g>
+<g transform="translate(404.0,428.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 1.1329975467057598 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 1.1329975467057598 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 22</text>
+</g>
+<g transform="translate(492.0,428.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 6.4907970730750675 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 6.4907970730750675 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 23</text>
+</g>
+<g transform="translate(52.0,540.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 13.821856766935475 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 13.821856766935475 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 24</text>
+</g>
+<g transform="translate(140.0,540.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 20.529550767615238 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 20.529550767615238 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 25</text>
+</g>
+<g transform="translate(228.0,540.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 26.311362098496538 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 26.311362098496538 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 26</text>
+</g>
+<g transform="translate(316.0,540.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 30.906531088220607 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 30.906531088220607 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 27</text>
+</g>
+<g transform="translate(404.0,540.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 34.107815630979076 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 34.107815630979076 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 28</text>
+</g>
+<g transform="translate(492.0,540.0)">
+<circle cx="0" cy="0" r="36.0" fill="#0b1020"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.770837804781074 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb" opacity="0.25"/>
+<path d="
+    M 0 -36.0
+    A 36.0 36.0 0 0 1 0 36.0
+    A 35.770837804781074 36.0 0 0 1 0 -36.0
+    Z
+    " fill="#f5f7fb"/>
+<circle cx="0" cy="0" r="35.5" fill="none" stroke="#1b2238" stroke-width="1"/>
+<text x="0" y="50.0" font-size="12" text-anchor="middle" fill="#c9d1ff" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Day 29</text>
+</g>
+</svg>

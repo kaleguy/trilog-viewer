@@ -38,6 +38,38 @@ export interface NoteEntry {
   calories: number | null;
 }
 
+export interface HistoricalWeather {
+  dateKey: string;
+  timestamp: number;
+  temperature: number | null;
+  temperatureUnit: string | null; // 'F' or 'C'
+  precipProb: number | null;
+  shortForecast: string;
+  isDaytime: boolean;
+}
+
+// Cycle color names → muted hex values, copied from the iOS chart's
+// `getCycleColorStyle`. Keep in sync if the iPhone palette changes.
+export const CYCLE_COLOR_MAP: Record<string, string> = {
+  red: '#D95550',
+  orange: '#E0944A',
+  yellow: '#D9BF4A',
+  green: '#4AAE6A',
+  lightgreen: '#7DC98A',
+  blue: '#4A90C2',
+  lightblue: '#7AB8D4',
+  purple: '#9A6EB8',
+  pink: '#D96088',
+  brown: '#A08060',
+  gray: '#8A8A90',
+  black: '#2A2A2A',
+};
+
+export function cycleColor(name?: string | null): string {
+  if (!name) return '#4A90C2';
+  return CYCLE_COLOR_MAP[name.toLowerCase()] ?? name;
+}
+
 export const MOOD_COLORS: Record<MoodType, string> = {
   anxious: '#FF9500',
   sad: '#2E6BC7',

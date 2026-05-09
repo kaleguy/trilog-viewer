@@ -117,13 +117,29 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* Inline-height spacers that mirror the optional rows below the day
+   track on the day-column side. Heights are passed in via inline style;
+   omitting them collapses the spacer visually. */
+.chart-yaxis-weather-spacer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chart-yaxis-moon-spacer {
+  /* No border — moon row sits flush between the date footer and weather. */
+}
+
+.chart-yaxis-cycle-spacer {
+  background: #1a1a1a;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 .chart-yaxis-label {
   position: absolute;
   right: 8px;
   font-size: 10px;
   color: #888;
-  transform: translateY(-50%);
   font-variant-numeric: tabular-nums;
+  /* transform set inline per-label to handle top / bottom anchoring */
 }
 
 .chart-columns {
@@ -158,6 +174,61 @@
   flex-direction: column;
   border-right: 1px solid #000;
   background: #000;
+}
+
+/* Cycle strip above the day-track and weather strip below the day-footer.
+   Both have heights passed in inline; the y-axis gets matching spacers. */
+.day-weather {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: #ccc;
+}
+
+.weather-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.weather-temp {
+  font-size: 10px;
+  color: #aaa;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cycle row sits at the very bottom of each day column. Rendered with
+   a slight gray background whenever the toggle is on so the row stays
+   visible on days without a cycle entry. */
+.day-cycle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  background: #1a1a1a;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.day-moon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.moon-icon {
+  /* Background image + size are set inline by moonSpriteStyle. */
+  border-radius: 50%;
+}
+
+.cycle-bar {
+  width: 100%;
+  max-width: 22px;
+  height: 6px;
+  border-radius: 2px;
 }
 
 /* Track holds 1-3 sub-columns (mood, energy, activity) plus a notes overlay
