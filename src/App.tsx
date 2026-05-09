@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Database from '@tauri-apps/plugin-sql';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Menu } from 'lucide-react';
 import { MoodChart } from './views/MoodChart';
 import { Placeholder } from './views/Placeholder';
 import { SettingsModal, type ViewerSettings } from './views/SettingsModal';
+import { AboutModal } from './views/AboutModal';
 import { getAppSettings } from './db/queries';
 import './App.css';
 
@@ -29,11 +30,33 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [viewerSettings, setViewerSettings] = useState<ViewerSettings>({
     showCycles: false,
     showWeather: false,
     showMoonPhases: false,
   });
+
+  // Click anywhere outside the hamburger menu (or press Escape) closes it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
 
   const openDb = async () => {
     setError(null);
@@ -121,14 +144,36 @@ function App() {
             {db.settings.zip ? ` · ${db.settings.zip}` : ''}
           </span>
         )}
-        <button
-          className="icon-btn"
-          type="button"
-          aria-label="Settings"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Menu size={18} />
-        </button>
+        <div className="header-menu" ref={menuRef}>
+          <button
+            className="icon-btn"
+            type="button"
+            aria-label="Menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <Menu size={18} />
+          </button>
+          {menuOpen && (
+            <div className="header-menu-popover" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setSettingsOpen(true); setMenuOpen(false); }}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setAboutOpen(true); setMenuOpen(false); }}
+              >
+                About
+              </button>
+            </div>
+          )}
+        </div>
         <button className="close-db" type="button" onClick={closeDb}>Close</button>
       </header>
 
@@ -151,6 +196,7 @@ function App() {
         onChange={setViewerSettings}
         onClose={() => setSettingsOpen(false)}
       />
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }

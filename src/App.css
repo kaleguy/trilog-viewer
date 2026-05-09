@@ -157,6 +157,42 @@ code {
   color: #fff;
 }
 
+/* Hamburger dropdown — anchored to the icon button via the wrapper's
+   relative positioning. */
+.header-menu {
+  position: relative;
+}
+
+.header-menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 140px;
+  background: #1f1f22;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  z-index: 50;
+}
+
+.header-menu-popover button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #f0f0f0;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.header-menu-popover button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .close-db {
   font-size: 12px;
   padding: 4px 10px;
