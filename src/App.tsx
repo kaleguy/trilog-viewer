@@ -37,12 +37,50 @@ function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [viewerSettings, setViewerSettings] = useState<ViewerSettings>({
-    showCycles: false,
-    showWeather: false,
-    showMoonPhases: false,
-    showLifeCalendar: false,
+  const [viewerSettings, setViewerSettings] = useState<ViewerSettings>(() => {
+    // Boot the appearance toggles + birthdate + horizon from localStorage so
+    // they survive across DB opens / app restarts. Mood-chart toggles get
+    // reseeded from the bundle's app_settings on each open.
+    let stored: Partial<ViewerSettings> = {};
+    try {
+      const raw = localStorage.getItem('trilog.viewer.settings');
+      if (raw) stored = JSON.parse(raw);
+    } catch {
+      // ignore — use defaults
+    }
+    // Honor the older standalone birthdate key from the empty-state form
+    // so existing users don't have to re-enter it.
+    const legacyBirthdate = localStorage.getItem('trilog.viewer.birthdate') || '';
+    return {
+      showCycles: false,
+      showWeather: false,
+      showMoonPhases: false,
+      showLifeCalendar: stored.showLifeCalendar ?? false,
+      birthdate: stored.birthdate ?? legacyBirthdate,
+      lifeFocusHorizonYears: stored.lifeFocusHorizonYears ?? null,
+    };
   });
+
+  // Persist the settings the viewer manages itself (everything except
+  // the mood-chart toggles, which seed from the bundle each open).
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'trilog.viewer.settings',
+        JSON.stringify({
+          showLifeCalendar: viewerSettings.showLifeCalendar,
+          birthdate: viewerSettings.birthdate,
+          lifeFocusHorizonYears: viewerSettings.lifeFocusHorizonYears,
+        })
+      );
+    } catch {
+      // ignore quota/serialization errors — non-critical
+    }
+  }, [
+    viewerSettings.showLifeCalendar,
+    viewerSettings.birthdate,
+    viewerSettings.lifeFocusHorizonYears,
+  ]);
 
   // Click anywhere outside the hamburger menu (or press Escape) closes it.
   useEffect(() => {
@@ -84,9 +122,11 @@ function App() {
         showCycles: settings.showCycles === 'true',
         showWeather: settings.showWeather === 'true',
         showMoonPhases: settings.showMoonPhases === 'true',
-        // Appearance toggles are viewer-local (not in app_settings); keep
-        // whatever the user already chose this session.
+        // Appearance / Life Calendar settings are viewer-local; keep
+        // whatever the user already configured.
         showLifeCalendar: prev.showLifeCalendar,
+        birthdate: prev.birthdate,
+        lifeFocusHorizonYears: prev.lifeFocusHorizonYears,
       }));
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -208,7 +248,13 @@ function App() {
           {activeTab === 'metrics' && <Metrics conn={db.conn} />}
           {activeTab === 'habits' && <Placeholder title="Habits" />}
           {activeTab === 'trackers' && <Placeholder title="Trackers" />}
-          {activeTab === 'life' && <LifeCalendar />}
+          {activeTab === 'life' && (
+            <LifeCalendar
+              birthdate={viewerSettings.birthdate}
+              focusHorizonYears={viewerSettings.lifeFocusHorizonYears}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          )}
         </ErrorBoundary>
       </main>
 

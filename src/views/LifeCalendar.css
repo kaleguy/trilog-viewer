@@ -118,6 +118,13 @@
   box-shadow: 0 0 0 1px #00cc55;
 }
 
+/* Cells past the user's "focus horizon" stay clearly visible but a bit
+   muted so the active years stand out. Applies to both lived and
+   unlived cells. */
+.life-cell.beyond-horizon {
+  opacity: 0.6;
+}
+
 /* Empty state ---------------------------------------------------------- */
 
 .life-empty {

@@ -113,3 +113,42 @@
   margin-top: 2px;
   cursor: pointer;
 }
+
+/* Stacked layout for rows that need an input row beneath the label
+   (birthdate Y/M/D, focus horizon). The default flex-row layout would
+   put the inputs alongside the hint text — too cramped. */
+.setting-row.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  cursor: default;
+}
+
+.setting-bd-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-bd-inputs input[type='number'] {
+  background: #0d0d0d;
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color-scheme: dark;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  width: 70px;
+}
+
+.setting-bd-inputs input[type='number']:nth-of-type(2),
+.setting-bd-inputs input[type='number']:nth-of-type(3) {
+  width: 50px;
+}
+
+.bd-sep {
+  color: #555;
+}

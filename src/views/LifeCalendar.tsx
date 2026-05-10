@@ -1,73 +1,16 @@
-import { useState } from 'react';
 import './LifeCalendar.css';
 
-const STORAGE_KEY = 'trilog.viewer.birthdate';
 const COLS = 100; // years
 const ROWS = 52;  // weeks per year (close enough for 100 years)
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
+interface Props {
+  birthdate: string;          // 'YYYY-MM-DD' or '' if unset
+  focusHorizonYears: number | null;
+  onOpenSettings: () => void;
 }
 
-export function LifeCalendar() {
-  const [birthdate, setBirthdate] = useState<string | null>(() =>
-    localStorage.getItem(STORAGE_KEY)
-  );
-  // Three separate fields beat <input type="date"> for typing a far-away
-  // year on Webkit (Tauri's webview) — the date picker forces a scroll
-  // widget for years. Stored as raw strings so the user can type/clear
-  // freely; we validate on submit.
-  const [yearStr, setYearStr] = useState('');
-  const [monthStr, setMonthStr] = useState('');
-  const [dayStr, setDayStr] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const y = Number(yearStr);
-    const m = Number(monthStr);
-    const d = Number(dayStr);
-    const today = new Date();
-    if (
-      !Number.isInteger(y) || y < 1900 || y > today.getFullYear() ||
-      !Number.isInteger(m) || m < 1 || m > 12 ||
-      !Number.isInteger(d) || d < 1 || d > 31
-    ) {
-      setError('Enter a valid year (1900+), month (1-12), and day (1-31).');
-      return;
-    }
-    // Sanity-check the resulting Date isn't in the future and didn't roll
-    // over (e.g. Feb 30 → Mar 2).
-    const candidate = new Date(y, m - 1, d);
-    if (
-      candidate.getFullYear() !== y ||
-      candidate.getMonth() !== m - 1 ||
-      candidate.getDate() !== d
-    ) {
-      setError('That date doesn’t exist (e.g. Feb 30).');
-      return;
-    }
-    if (candidate.getTime() > today.getTime()) {
-      setError('Birthdate can’t be in the future.');
-      return;
-    }
-    const value = `${y}-${pad2(m)}-${pad2(d)}`;
-    localStorage.setItem(STORAGE_KEY, value);
-    setBirthdate(value);
-  };
-
-  const handleEdit = () => {
-    if (birthdate) {
-      const [y, m, d] = birthdate.split('-');
-      setYearStr(y);
-      setMonthStr(String(Number(m)));
-      setDayStr(String(Number(d)));
-    }
-    setBirthdate(null);
-  };
-
+export function LifeCalendar({ birthdate, focusHorizonYears, onOpenSettings }: Props) {
   if (!birthdate) {
     return (
       <div className="life-empty">
@@ -77,41 +20,12 @@ export function LifeCalendar() {
           (5,200 weeks total): each column is a year, each row is a week
           within the year. Lived weeks are filled in.
         </p>
-        <form className="life-form" onSubmit={handleSave}>
-          <span className="life-label">Your birthdate</span>
-          <input
-            type="number"
-            placeholder="YYYY"
-            value={yearStr}
-            onChange={(e) => setYearStr(e.target.value)}
-            min={1900}
-            max={new Date().getFullYear()}
-            className="life-year"
-            autoFocus
-          />
-          <span className="life-sep">/</span>
-          <input
-            type="number"
-            placeholder="MM"
-            value={monthStr}
-            onChange={(e) => setMonthStr(e.target.value)}
-            min={1}
-            max={12}
-            className="life-md"
-          />
-          <span className="life-sep">/</span>
-          <input
-            type="number"
-            placeholder="DD"
-            value={dayStr}
-            onChange={(e) => setDayStr(e.target.value)}
-            min={1}
-            max={31}
-            className="life-md"
-          />
-          <button type="submit">Save</button>
-        </form>
-        {error && <p className="life-error">{error}</p>}
+        <p>
+          Set your birthdate in <strong>Settings</strong> to start.
+        </p>
+        <button type="button" className="life-edit-btn" onClick={onOpenSettings}>
+          Open Settings
+        </button>
         <p className="life-privacy">
           Stored locally in this app's storage; never written to the bundle
           or shared anywhere.
@@ -120,8 +34,7 @@ export function LifeCalendar() {
     );
   }
 
-  // Birthdate is YYYY-MM-DD (date input format). Parse as local-midnight
-  // so the math doesn't slip a day across timezones.
+  // Parse birthdate as local-midnight so timezone math doesn't slip a day.
   const [y, m, d] = birthdate.split('-').map(Number);
   const birth = new Date(y, (m ?? 1) - 1, d ?? 1);
   const now = new Date();
@@ -132,9 +45,12 @@ export function LifeCalendar() {
   const totalCells = COLS * ROWS;
   const yearsLived = Math.floor(weeksLived / ROWS);
 
-  // Cells are rendered row-by-row so the grid's default placement order
-  // (left-to-right, top-to-bottom) matches the (col, row) interpretation
-  // and each row of the DOM corresponds to one chart row.
+  // Horizon: cells whose column index is >= horizon are dimmed. null
+  // means no horizon set, so nothing dims.
+  const horizon = focusHorizonYears != null && focusHorizonYears > 0
+    ? Math.floor(focusHorizonYears)
+    : null;
+
   const cells: React.ReactNode[] = [];
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
@@ -142,6 +58,7 @@ export function LifeCalendar() {
       let className = 'life-cell';
       if (i < weeksLived) className += ' lived';
       else if (i === weeksLived) className += ' current';
+      if (horizon != null && col >= horizon) className += ' beyond-horizon';
       cells.push(
         <div
           key={`${col}-${row}`}
@@ -176,10 +93,15 @@ export function LifeCalendar() {
               year: 'numeric', month: 'long', day: 'numeric',
             })} · {weeksLived.toLocaleString()} weeks · {yearsLived} years ·
             {' '}{(totalCells - weeksLived).toLocaleString()} weeks remain
+            {horizon != null && (
+              <>
+                {' '}· focus through age {horizon}
+              </>
+            )}
           </p>
         </div>
-        <button type="button" className="life-edit-btn" onClick={handleEdit}>
-          Edit birthdate
+        <button type="button" className="life-edit-btn" onClick={onOpenSettings}>
+          Edit
         </button>
       </header>
 

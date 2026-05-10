@@ -8,6 +8,11 @@ export interface ViewerSettings {
   showMoonPhases: boolean;
   // Appearance
   showLifeCalendar: boolean;
+  // 'YYYY-MM-DD' or '' if unset.
+  birthdate: string;
+  // Years past this age get dimmed in the Life Calendar; null = no
+  // shading. Number is age (column index), not calendar year.
+  lifeFocusHorizonYears: number | null;
 }
 
 interface Props {
@@ -18,51 +23,74 @@ interface Props {
 }
 
 interface ToggleDef {
-  key: keyof ViewerSettings;
+  key: 'showCycles' | 'showWeather' | 'showMoonPhases' | 'showLifeCalendar';
   label: string;
   hint: string;
 }
 
-interface SectionDef {
-  title: string;
-  toggles: ToggleDef[];
-}
-
-const SECTIONS: SectionDef[] = [
+const MOOD_TOGGLES: ToggleDef[] = [
   {
-    title: 'Mood Chart',
-    toggles: [
-      {
-        key: 'showCycles',
-        label: 'Show cycles',
-        hint: 'Color the day columns with cycle phase markers from your journal.',
-      },
-      {
-        key: 'showWeather',
-        label: 'Show weather',
-        hint: 'Overlay temperature / precip glyphs from the weather cache.',
-      },
-      {
-        key: 'showMoonPhases',
-        label: 'Show moon phases',
-        hint: 'Tiny moon icon in the day footer.',
-      },
-    ],
+    key: 'showCycles',
+    label: 'Show cycles',
+    hint: 'Color the day columns with cycle phase markers from your journal.',
   },
   {
-    title: 'Appearance',
-    toggles: [
-      {
-        key: 'showLifeCalendar',
-        label: 'Show Life Calendar tab',
-        hint: 'A 100-year × 52-week grid of your life. Off by default.',
-      },
-    ],
+    key: 'showWeather',
+    label: 'Show weather',
+    hint: 'Overlay temperature / precip glyphs from the weather cache.',
+  },
+  {
+    key: 'showMoonPhases',
+    label: 'Show moon phases',
+    hint: 'Tiny moon icon in the day footer.',
   },
 ];
 
+function parseBirthdate(s: string): { y: string; m: string; d: string } {
+  if (!s) return { y: '', m: '', d: '' };
+  const [y, m, d] = s.split('-');
+  return {
+    y: y ?? '',
+    m: m ? String(Number(m)) : '',
+    d: d ? String(Number(d)) : '',
+  };
+}
+
+function joinBirthdate(y: string, m: string, d: string): string {
+  if (!y || !m || !d) return '';
+  const yy = Number(y);
+  const mm = Number(m);
+  const dd = Number(d);
+  const today = new Date();
+  if (
+    !Number.isInteger(yy) || yy < 1900 || yy > today.getFullYear() ||
+    !Number.isInteger(mm) || mm < 1 || mm > 12 ||
+    !Number.isInteger(dd) || dd < 1 || dd > 31
+  ) return '';
+  const candidate = new Date(yy, mm - 1, dd);
+  if (
+    candidate.getFullYear() !== yy ||
+    candidate.getMonth() !== mm - 1 ||
+    candidate.getDate() !== dd ||
+    candidate.getTime() > today.getTime()
+  ) return '';
+  return `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
 export function SettingsModal({ open, settings, onChange, onClose }: Props) {
   if (!open) return null;
+  const bd = parseBirthdate(settings.birthdate);
+
+  const setBirthdatePart = (part: 'y' | 'm' | 'd', value: string) => {
+    const next = { ...bd, [part]: value };
+    const joined = joinBirthdate(next.y, next.m, next.d);
+    // Persist only when the date is fully valid; leave the partial state
+    // visible in the inputs by stashing it in the `birthdate` field as
+    // an "almost-valid" value would be jarring — instead we store '' until
+    // the user finishes a valid date and reconstruct draft on next open.
+    onChange({ ...settings, birthdate: joined });
+  };
+
   return (
     <div className="settings-backdrop" onClick={onClose}>
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
@@ -77,30 +105,117 @@ export function SettingsModal({ open, settings, onChange, onClose }: Props) {
           bundle. Changes here only affect the viewer.
         </p>
 
-        {SECTIONS.map((section) => (
-          <div key={section.title} className="settings-section">
-            <h3 className="settings-section-title">{section.title}</h3>
-            <ul className="settings-list">
-              {section.toggles.map((t) => (
-                <li key={t.key}>
-                  <label className="setting-row">
+        <div className="settings-section">
+          <h3 className="settings-section-title">Mood Chart</h3>
+          <ul className="settings-list">
+            {MOOD_TOGGLES.map((t) => (
+              <li key={t.key}>
+                <label className="setting-row">
+                  <div className="setting-text">
+                    <span className="setting-label">{t.label}</span>
+                    <span className="setting-hint">{t.hint}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings[t.key]}
+                    onChange={(e) => onChange({ ...settings, [t.key]: e.target.checked })}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="settings-section">
+          <h3 className="settings-section-title">Appearance</h3>
+          <ul className="settings-list">
+            <li>
+              <label className="setting-row">
+                <div className="setting-text">
+                  <span className="setting-label">Show Life Calendar tab</span>
+                  <span className="setting-hint">A 100-year × 52-week grid of your life. Off by default.</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.showLifeCalendar}
+                  onChange={(e) => onChange({ ...settings, showLifeCalendar: e.target.checked })}
+                />
+              </label>
+            </li>
+            {settings.showLifeCalendar && (
+              <>
+                <li>
+                  <div className="setting-row stacked">
                     <div className="setting-text">
-                      <span className="setting-label">{t.label}</span>
-                      <span className="setting-hint">{t.hint}</span>
+                      <span className="setting-label">Birthdate</span>
+                      <span className="setting-hint">Used to anchor the Life Calendar grid.</span>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={settings[t.key]}
-                      onChange={(e) =>
-                        onChange({ ...settings, [t.key]: e.target.checked })
-                      }
-                    />
-                  </label>
+                    <div className="setting-bd-inputs">
+                      <input
+                        type="number"
+                        placeholder="YYYY"
+                        value={bd.y}
+                        min={1900}
+                        max={new Date().getFullYear()}
+                        onChange={(e) => setBirthdatePart('y', e.target.value)}
+                      />
+                      <span className="bd-sep">/</span>
+                      <input
+                        type="number"
+                        placeholder="MM"
+                        value={bd.m}
+                        min={1}
+                        max={12}
+                        onChange={(e) => setBirthdatePart('m', e.target.value)}
+                      />
+                      <span className="bd-sep">/</span>
+                      <input
+                        type="number"
+                        placeholder="DD"
+                        value={bd.d}
+                        min={1}
+                        max={31}
+                        onChange={(e) => setBirthdatePart('d', e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+                <li>
+                  <div className="setting-row stacked">
+                    <div className="setting-text">
+                      <span className="setting-label">Focus horizon (years)</span>
+                      <span className="setting-hint">
+                        Years past this age get dimmed so the active years stand out. Leave empty for no shading.
+                      </span>
+                    </div>
+                    <div className="setting-bd-inputs">
+                      <input
+                        type="number"
+                        placeholder="e.g. 75"
+                        value={settings.lifeFocusHorizonYears ?? ''}
+                        min={1}
+                        max={99}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            onChange({ ...settings, lifeFocusHorizonYears: null });
+                            return;
+                          }
+                          const n = Number(raw);
+                          onChange({
+                            ...settings,
+                            lifeFocusHorizonYears:
+                              Number.isInteger(n) && n > 0 && n <= 99 ? n : null,
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </li>
+              </>
+            )}
+          </ul>
+        </div>
       </div>
     </div>
   );
