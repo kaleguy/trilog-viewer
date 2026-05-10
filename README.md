@@ -1,28 +1,48 @@
 # TriLog Viewer
 
-Native Mac viewer for TriLog data exports. Reads the `journal.db` SQLite
-file produced by TriLog's "Export Database + Photos" bundle and lets you
-browse the data offline with the same conventions as the iPhone app, but
-laid out for a wider screen.
+Native Mac viewer for TriLog data exports. Open a `journal.db` bundle
+exported from the iPhone app and browse mood, energy, activity, notes,
+weather, cycles, moon phases, daily metrics — laid out for a desktop
+screen. Built with Tauri 2 + React + Vite.
 
-Built with Tauri 2 + React + Vite.
+The viewer is read-only. It never writes to the bundle, never phones
+home, and stores nothing besides a few preferences in localStorage
+(birthdate, focus horizon, appearance toggles).
 
 ## Prerequisites
 
-- Rust (`rustup` toolchain)
-- Bun (or npm/pnpm — replace `bun` below if using a different one)
-- Xcode command-line tools (macOS)
+You need three things on your Mac:
 
-## Develop
+- **Rust** (the Tauri shell compiles to native code)
+
+  ```
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  source "$HOME/.cargo/env"
+  ```
+
+- **Bun** (the JS toolchain — replace with npm/pnpm if you'd rather)
+
+  ```
+  curl -fsSL https://bun.sh/install | bash
+  ```
+
+- **Xcode command-line tools**
+
+  ```
+  xcode-select --install
+  ```
+
+## Run from source (dev)
 
 ```
+git clone <this repo>
+cd trilog-viewer
 bun install
 bun run tauri dev
 ```
 
-The first `cargo` build pulls and compiles a few hundred crates, so the
-initial dev launch takes a few minutes. Subsequent runs are incremental
-and much faster.
+The first `cargo` build pulls and compiles a few hundred crates — give
+it a few minutes. Subsequent runs are incremental and fast.
 
 ## Build a release `.app`
 
@@ -30,89 +50,92 @@ and much faster.
 bun run tauri build
 ```
 
-Output lands in `src-tauri/target/release/bundle/macos/`.
+Output lands in `src-tauri/target/release/bundle/macos/`. The `.app`
+runs without a Gatekeeper warning on the machine that built it (signed
+with the local ad-hoc cert). For distribution to others without a
+warning you'd need to sign + notarize with an Apple Developer ID; not
+configured here.
+
+For a universal binary that runs on both Apple Silicon and Intel:
+
+```
+bun run tauri build --target universal-apple-darwin
+```
+
+## Get a bundle to open
+
+In the iPhone app: **Settings → expand "Backup" → "Export Bundle (.zip)"**.
+AirDrop the zip to your Mac, unzip, and the viewer's "Open Database…"
+button can point at the resulting `journal.db`.
+
+## Tabs
+
+- **Mood Chart** — the iOS punch-card chart, redrawn for the wider
+  screen. 30-day window in "All" mode (mood / energy / activity all
+  shown), 90-day window in single-metric mode. Optional cycle strip,
+  weather strip, and moon-phase row toggleable from Settings. Hours
+  axis with 12 AM / 12 PM labels and 3 AM / noon / 6 PM reference
+  lines. Hover any element for time + type + notes.
+- **Metrics** — full per-day metrics grid (~33 rows × 60 days). Pulls
+  from `day_entries` direct columns, JSON columns (pollen / air
+  quality / UV / pressure), activity-type aggregates, cycles,
+  pomodoro counts, weather. A settings popover hides any row you
+  don't want to see.
+- **Habits**, **Trackers** — placeholder stubs (not yet built).
+- **Life Calendar** — optional, off by default. 100-year × 52-week
+  grid filled in week by week. Set your birthdate and an optional
+  "focus horizon" age in Settings; cells past the horizon dim so the
+  active years stand out.
+
+## Header menu
+
+The hamburger in the top-right opens a small menu with two items:
+
+- **Settings** — Mood Chart strip toggles, Appearance toggles, Life
+  Calendar birthdate + focus horizon. Mood-chart toggles seed from
+  the bundle's `app_settings` snapshot the iPhone app writes at
+  export time; the rest are viewer-local and persist in
+  localStorage.
+- **About** — version + license.
 
 ## Project layout
 
 ```
 src/                                React frontend
-  App.tsx                           Shell: open DB + tab nav
-  views/                            One file per tab
-    MoodChart.tsx / .css            Punch-card chart
+  App.tsx                           Shell: open DB + tab nav + header menu
+  version.ts                        APP_VERSION (bump per release)
+  views/
+    MoodChart.tsx + css             Punch-card chart
+    Metrics.tsx + css               Per-day metrics grid
+    LifeCalendar.tsx + css          Life-week grid
+    SettingsModal.tsx + css         Viewer settings
+    AboutModal.tsx + css            Version / license
+    ErrorBoundary.tsx               Wraps the active tab
     Placeholder.tsx                 Stub for unimplemented tabs
-  db/types.ts                       Row types + color palettes
-  db/queries.ts                     SQL helpers (date-range queries)
+    moonPhase.ts                    Lunar age + sprite math
+    weatherIcon.tsx                 Forecast → Lucide icon
+  db/
+    types.ts                        Row types + palette constants
+    queries.ts                      All SQL helpers
+public/
+  moon_sprite.svg                   Lunar phase sprite sheet (from iOS)
 src-tauri/                          Rust shell, plugin config, build settings
   src/lib.rs                        Plugin registration
   capabilities/default.json         What the frontend is allowed to do
   tauri.conf.json                   Window + bundle config
 ```
 
-## Current state
-
-### Open Database flow
-
-Pick a `journal.db` via the native file dialog. The viewer opens it
-read-only via `tauri-plugin-sql` and switches to the tabbed shell.
-"Close" returns to the picker.
-
-### Tabs
-
-- **Mood Chart** — implemented (see below).
-- **Metrics**, **Habits**, **Trackers** — placeholder stubs.
-
-### Mood Chart
-
-The TriLog "punch card" chart, ported to the desktop. Days run left to
-right along the bottom, hours of day run top to bottom (midnight to
-midnight). For each day the chart shows three sub-tracks (mood, energy,
-activity) when "All" is selected, or a single full-width track when
-filtered.
-
-Toolbar:
-
-- **All / Mood / Energy / Activity** toggle group. "All" shows 30 days
-  with three sub-columns each; the single-metric modes show 90 days
-  with one sub-column each, so per-sub-column width stays the same.
-- **Notes** checkbox — overlays a marker per `note_entries` row at its
-  timestamp.
-- **‹ ›** date navigation steps back/forward by the visible window size
-  and clamps the right edge to today.
-
-Per-day rendering:
-
-- **Activity bars** — 1/3-of-day-column wide, colored by activity type
-  using the iOS palette.
-- **Mood / Energy circles** — 14px filled dots centered in their
-  sub-columns, colored by mood type (`MOOD_COLORS`) or energy level
-  (`ENERGY_COLORS`).
-- **Note markers** — 16px white tiles (rounded square in single-view,
-  circle in "All" view) pinned over the right-most visible sub-column,
-  with a Lucide icon picked from the note's flags
-  (`Utensils` / `HeartPulse` / `Droplet` / `BarChart3` / `FileText`).
-- **Sub-column background** — `#0f0f0f` base with a daylight tint
-  gradient (`rgba(255,255,255,0.06)` solid 6am-6pm, with 30-min twilight
-  fades at sunrise / sunset). Today's column swaps in a green tint.
-- **Reference lines** — thin horizontal lines at 3am, noon, and 6pm
-  span the full chart, matching the iPhone app.
-
-Data handling:
-
-- **Fill in Gaps assumed on**: every activity is extended forward to
-  the start time of the next activity (the per-entry `fillGaps` and the
-  natural-duration end are both ignored unless the activity is the last
-  in the series). Gated by a TODO for when we add a viewer settings
-  menu.
-- **Cross-day activities** (e.g. sleep from 11pm to 7am) are placed on
-  every day they overlap and clamped to that day's boundaries when
-  drawn.
-
-### Not yet implemented
+## Not yet implemented
 
 - Click an entry → side panel with notes / details.
-- Real sunrise / sunset times (currently uses the iOS app's 6am-6pm
-  fallback regardless of date or location).
-- Hamburger menu for viewer settings (Fill in Gaps toggle, light theme,
-  etc.).
-- Photo lookup from the `images/` folder bundled alongside `journal.db`.
-- Metrics / Habits / Trackers tabs.
+- Real sunrise / sunset times (currently uses 6 AM-6 PM fallback
+  regardless of date or location).
+- Photo lookup from the `images/` folder alongside `journal.db`.
+- Habits and Trackers tabs.
+- Cross-tracker correlations, environmental analysis, stretch-
+  comparison adaptation analysis (all planned for the viewer; the
+  iPhone app gets the lighter periodicity / coupling subset).
+
+## License
+
+MIT. See the About dialog for the user-facing notice.
