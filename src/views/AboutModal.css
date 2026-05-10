@@ -10,37 +10,52 @@
 }
 
 .about-panel {
-  width: 420px;
+  position: relative;
+  width: 440px;
   max-width: 100%;
-  background: #1a1a1a;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 20px 22px 22px;
+  background: linear-gradient(180deg, #1d1d1f 0%, #161618 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 26px 26px 22px;
   color: #f0f0f0;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
   line-height: 1.55;
+  overflow: hidden;
 }
 
-.about-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.about-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+/* Soft accent glow at the top of the panel — pulls the eye to the
+   title and ties the modal to the tri-color brand without being loud. */
+.about-panel::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  height: 120px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(74, 174, 106, 0.18) 0%,
+    rgba(74, 144, 194, 0.12) 40%,
+    transparent 70%
+  );
+  pointer-events: none;
 }
 
 .about-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   background: transparent;
   border: none;
-  color: #aaa;
-  padding: 4px;
+  color: #888;
+  padding: 6px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
 }
 
 .about-close:hover {
@@ -48,28 +63,119 @@
   color: #fff;
 }
 
-.about-version {
-  margin: 0 0 14px;
+.about-brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.about-dots {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.about-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.about-dot-mood {
+  background: #4AAE6A;
+  box-shadow: 0 0 8px rgba(74, 174, 106, 0.5);
+}
+
+.about-dot-energy {
+  background: #4A90C2;
+  box-shadow: 0 0 8px rgba(74, 144, 194, 0.5);
+}
+
+.about-dot-activity {
+  background: #D96088;
+  box-shadow: 0 0 8px rgba(217, 96, 136, 0.5);
+}
+
+.about-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.about-title-tri {
+  background: linear-gradient(135deg, #4AAE6A 0%, #4A90C2 50%, #D96088 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.about-title-log {
+  color: #f0f0f0;
+}
+
+.about-title-viewer {
   color: #888;
-  font-size: 12px;
+  font-weight: 500;
+}
+
+.about-version-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
 }
 
 .about-body {
-  margin: 0 0 12px;
+  margin: 0 0 18px;
   font-size: 13px;
-  color: #d0d0d0;
+  color: #c8c8c8;
 }
 
 .about-body code {
   background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #e8e8e8;
+}
+
+.about-meta {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.about-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   font-size: 12px;
 }
 
-.about-license {
-  margin: 16px 0 0;
-  font-size: 12px;
-  color: #888;
+.about-meta-label {
+  color: #777;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+.about-meta-value {
+  color: #d0d0d0;
 }

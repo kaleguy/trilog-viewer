@@ -12,14 +12,23 @@ export function AboutModal({ open, onClose }: Props) {
   return (
     <div className="about-backdrop" onClick={onClose}>
       <div className="about-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="about-header">
-          <h2>TriLog Viewer</h2>
-          <button className="about-close" type="button" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
+        <button className="about-close" type="button" onClick={onClose} aria-label="Close">
+          <X size={18} />
+        </button>
 
-        <p className="about-version">Version {APP_VERSION}</p>
+        <div className="about-brand">
+          <div className="about-dots" aria-hidden>
+            <span className="about-dot about-dot-mood" />
+            <span className="about-dot about-dot-energy" />
+            <span className="about-dot about-dot-activity" />
+          </div>
+          <h2 className="about-title">
+            <span className="about-title-tri">Tri</span>
+            <span className="about-title-log">Log</span>
+            <span className="about-title-viewer"> Viewer</span>
+          </h2>
+          <span className="about-version-pill">v{APP_VERSION}</span>
+        </div>
 
         <p className="about-body">
           An offline desktop viewer for TriLog journal exports. Open a
@@ -28,14 +37,20 @@ export function AboutModal({ open, onClose }: Props) {
           moon-phase history laid out for the bigger screen.
         </p>
 
-        <p className="about-body">
-          Built with Tauri 2 + React + Vite.
-        </p>
-
-        <p className="about-license">
-          Released under the <strong>MIT License</strong>. The viewer
-          stores nothing; it only reads the bundle you point it at.
-        </p>
+        <div className="about-meta">
+          <div className="about-meta-row">
+            <span className="about-meta-label">Built with</span>
+            <span className="about-meta-value">Tauri 2 · React · Vite</span>
+          </div>
+          <div className="about-meta-row">
+            <span className="about-meta-label">License</span>
+            <span className="about-meta-value">MIT</span>
+          </div>
+          <div className="about-meta-row">
+            <span className="about-meta-label">Privacy</span>
+            <span className="about-meta-value">Read-only · no telemetry</span>
+          </div>
+        </div>
       </div>
     </div>
   );
