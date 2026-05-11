@@ -46,6 +46,7 @@ export interface HistoricalWeather {
   precipProb: number | null;
   shortForecast: string;
   isDaytime: boolean;
+  humidityPercent: number | null;
 }
 
 /**
@@ -56,6 +57,7 @@ export interface HistoricalWeather {
 export interface DayEntryRow {
   dateKey: string;
   mood: string | null;
+  moodValues: string | null; // JSON [upset, anxious, sad, neutral, happy] (1-10)
   energy: number | null;
   onLevel: number | null;
   wellnessLevel: number | null;
@@ -73,6 +75,8 @@ export interface DayEntryRow {
   hkSleepDuration: number | null; // minutes
   hkDeepSleep: number | null;
   hkRemSleep: number | null;
+  screenTimeMinutes: number | null;
+  hkDietaryCalories: number | null;
   pressureData: string | null;
   pollenData: string | null;
   airQualityData: string | null;

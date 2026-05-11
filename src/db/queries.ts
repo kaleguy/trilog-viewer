@@ -108,18 +108,70 @@ export async function getDayEntriesRange(
   startDateKey: string,
   endDateKey: string
 ): Promise<DayEntryRow[]> {
-  return conn.select<DayEntryRow[]>(
-    `SELECT
-       dateKey, mood, energy, onLevel, wellnessLevel,
-       steps, restingHeartRate, avgBodyWeight, hrv,
-       sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
-       sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
-       hkSleepDuration, hkDeepSleep, hkRemSleep,
-       pressureData, pollenData, airQualityData, uvData
-     FROM day_entries
-     WHERE dateKey >= ? AND dateKey <= ?`,
-    [startDateKey, endDateKey]
-  );
+  // `screenTimeMinutes` and `hkDietaryCalories` are recent
+  // migrations. Some older bundles won't have those columns — fall
+  // back to the legacy column list if SELECTing them errors out, so
+  // the rest of the metrics still load.
+  try {
+    return await conn.select<DayEntryRow[]>(
+      `SELECT
+         dateKey, mood, moodValues, energy, onLevel, wellnessLevel,
+         steps, restingHeartRate, avgBodyWeight, hrv,
+         sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
+         sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
+         hkSleepDuration, hkDeepSleep, hkRemSleep, screenTimeMinutes,
+         hkDietaryCalories,
+         pressureData, pollenData, airQualityData, uvData
+       FROM day_entries
+       WHERE dateKey >= ? AND dateKey <= ?`,
+      [startDateKey, endDateKey]
+    );
+  } catch {
+    return conn.select<DayEntryRow[]>(
+      `SELECT
+         dateKey, mood, moodValues, energy, onLevel, wellnessLevel,
+         steps, restingHeartRate, avgBodyWeight, hrv,
+         sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
+         sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
+         hkSleepDuration, hkDeepSleep, hkRemSleep,
+         pressureData, pollenData, airQualityData, uvData
+       FROM day_entries
+       WHERE dateKey >= ? AND dateKey <= ?`,
+      [startDateKey, endDateKey]
+    );
+  }
+}
+
+/**
+ * Daily calorie totals from meal-flagged notes (`isMeal = 1`).
+ * Mirrors the iPhone WeekView's note-aggregation path — HealthKit
+ * calories aren't exported (they're refetched at render time on iOS),
+ * so this is the source of truth in the viewer.
+ */
+export async function getDailyCaloriesRange(
+  conn: Conn,
+  sinceMs: number,
+  untilMs: number
+): Promise<{ dateKey: string; calories: number }[]> {
+  try {
+    // SQLite's `date(timestamp/1000, 'unixepoch', 'localtime')` groups
+    // millisecond timestamps into local YYYY-MM-DD keys.
+    return await conn.select<{ dateKey: string; calories: number }[]>(
+      `SELECT
+         date(timestamp/1000, 'unixepoch', 'localtime') AS dateKey,
+         COALESCE(SUM(calories), 0) AS calories
+       FROM note_entries
+       WHERE isMeal = 1
+         AND calories IS NOT NULL
+         AND timestamp >= ?
+         AND timestamp < ?
+       GROUP BY dateKey`,
+      [sinceMs, untilMs]
+    );
+  } catch (err) {
+    console.warn('[Queries] getDailyCaloriesRange failed', err);
+    return [];
+  }
 }
 
 /**
@@ -132,14 +184,17 @@ export async function getPomodoroCountsRange(
   untilMs: number
 ): Promise<{ dateKey: string; count: number }[]> {
   try {
-    const rows = await conn.select<{ id: string; timestamp: number }[]>(
-      `SELECT id, timestamp FROM pomodoro_entries
-       WHERE timestamp >= ? AND timestamp < ?`,
+    // Schema: pomodoro_entries(id, startTime, endTime, focusText).
+    // One row per completed pomodoro; we tally by start-time's
+    // local-date.
+    const rows = await conn.select<{ id: string; startTime: number }[]>(
+      `SELECT id, startTime FROM pomodoro_entries
+       WHERE startTime >= ? AND startTime < ?`,
       [sinceMs, untilMs]
     );
     const tally = new Map<string, number>();
     for (const r of rows) {
-      const d = new Date(r.timestamp);
+      const d = new Date(r.startTime);
       const k =
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       tally.set(k, (tally.get(k) ?? 0) + 1);
@@ -155,15 +210,119 @@ export async function getHistoricalWeatherRange(
   startDateKey: string,
   endDateKey: string
 ): Promise<HistoricalWeather[]> {
+  // `humidityPercent` was added later — fall back without it on
+  // older bundles where the column doesn't exist.
   try {
     const rows = await conn.select<any[]>(
-      `SELECT dateKey, timestamp, temperature, temperatureUnit, precipProb, shortForecast, isDaytime
+      `SELECT dateKey, timestamp, temperature, temperatureUnit, precipProb, shortForecast, isDaytime, humidityPercent
        FROM historical_weather
        WHERE dateKey >= ? AND dateKey <= ?
        ORDER BY dateKey ASC`,
       [startDateKey, endDateKey]
     );
     return rows.map((r) => ({ ...r, isDaytime: !!r.isDaytime }));
+  } catch {
+    try {
+      const rows = await conn.select<any[]>(
+        `SELECT dateKey, timestamp, temperature, temperatureUnit, precipProb, shortForecast, isDaytime
+         FROM historical_weather
+         WHERE dateKey >= ? AND dateKey <= ?
+         ORDER BY dateKey ASC`,
+        [startDateKey, endDateKey]
+      );
+      return rows.map((r) => ({ ...r, isDaytime: !!r.isDaytime, humidityPercent: null }));
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
+ * Custom trackers defined by the user (one row per tracker key).
+ * `type` drives how a day's value is aggregated + rendered.
+ */
+export type TrackerType =
+  | 'text'
+  | 'count'
+  | 'sum'
+  | 'average'
+  | 'traffic_light'
+  | 'itemized_list'
+  | 'toggle'
+  | 'non_numeric'
+  | 'currency';
+
+export interface CustomTrackingItem {
+  id: string;
+  key: string;
+  label: string;
+  isNumeric: number;
+  type: TrackerType | null;
+  color: string;
+  createdAt: number;
+  category: string | null;
+  listItems: string | null;
+}
+
+export async function getCustomTrackingItems(conn: Conn): Promise<CustomTrackingItem[]> {
+  // `category` and `listItems` are recent ALTER TABLE columns. Older
+  // bundles won't have them — fall back without if SELECT fails.
+  try {
+    return await conn.select<CustomTrackingItem[]>(
+      `SELECT id, key, label, isNumeric, type, color, createdAt, category, listItems
+       FROM custom_tracking_items
+       ORDER BY createdAt ASC`,
+    );
+  } catch {
+    try {
+      const rows = await conn.select<Omit<CustomTrackingItem, 'category' | 'listItems'>[]>(
+        `SELECT id, key, label, isNumeric, type, color, createdAt
+         FROM custom_tracking_items
+         ORDER BY createdAt ASC`,
+      );
+      return rows.map((r) => ({ ...r, category: null, listItems: null }));
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
+ * Habits / day-todo items defined by the user. One row per habit;
+ * completions live in a separate table (`day_todo_completions`).
+ */
+export interface DayTodoItem {
+  id: string;
+  label: string;
+  notes: string | null;
+  createdAt: number;
+}
+
+export async function getDayTodoItems(conn: Conn): Promise<DayTodoItem[]> {
+  try {
+    return await conn.select<DayTodoItem[]>(
+      `SELECT id, label, notes, createdAt FROM day_todo_items ORDER BY createdAt ASC`
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Completion rows for the given local-date range. Each row marks
+ * one habit done on one day (unique on (todoItemId, dateKey)).
+ */
+export async function getDayTodoCompletionsRange(
+  conn: Conn,
+  startDateKey: string,
+  endDateKey: string,
+): Promise<{ todoItemId: string; dateKey: string }[]> {
+  try {
+    return await conn.select<{ todoItemId: string; dateKey: string }[]>(
+      `SELECT todoItemId, dateKey FROM day_todo_completions
+       WHERE dateKey >= ? AND dateKey <= ?`,
+      [startDateKey, endDateKey],
+    );
   } catch {
     return [];
   }

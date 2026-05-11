@@ -1,0 +1,23 @@
+.tracker-fill {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.tracker-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 20px;
+  padding: 2px 5px;
+  font-size: 14px;
+  color: #ddd;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}

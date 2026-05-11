@@ -1,0 +1,153 @@
+.habits {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
+  color: #f0f0f0;
+}
+
+.habits-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.habits-date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.habits-date-nav button {
+  padding: 4px 10px;
+  font-size: 14px;
+  background: transparent;
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.habits-date-nav button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.habits-date-range {
+  font-size: 13px;
+  color: #aaa;
+  min-width: 80px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.habits-loading {
+  font-size: 12px;
+  color: #888;
+}
+
+.habits-scroll {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #050505;
+  padding: 8px;
+}
+
+/* Day-head row sits at the top of the scrolling area and stays
+   visible as habit rows scroll under it. */
+.habits-day-head-row {
+  position: sticky;
+  top: -8px;
+  background: #050505;
+  display: grid;
+  grid-template-columns: repeat(42, 1fr);
+  gap: 1px;
+  padding: 4px 0 6px;
+  z-index: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.habits-day-head {
+  text-align: center;
+  font-size: 11px;
+  color: #aaa;
+  font-weight: 500;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.habits-day-head.today .habits-day-head-num {
+  color: #00cc55;
+}
+
+.habits-day-head-num {
+  font-size: 13px;
+  color: #ddd;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.habits-day-head-top {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  margin-bottom: 1px;
+}
+
+.habits-day-head-top.month {
+  color: #00cc55;
+  font-weight: 700;
+}
+
+.habits-row-group {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.habits-row-group:last-child {
+  border-bottom: none;
+}
+
+.habits-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+  padding: 0 2px 6px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.habits-cells-row {
+  display: grid;
+  grid-template-columns: repeat(42, 1fr);
+  gap: 1px;
+}
+
+.habits-cell {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+
+.habits-empty-past {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.habits-empty {
+  padding: 24px;
+  text-align: center;
+  color: #888;
+  font-size: 13px;
+}
