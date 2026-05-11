@@ -85,9 +85,11 @@ if [[ "$OLD_VERSION" == "$NEW_VERSION" ]]; then
 fi
 
 # -- Substitutions (macOS sed needs '' after -i)
-#   1. The .dmg URL path + filename: v1.0.0/TriLog%20Viewer_1.0.0_universal.dmg
+#   1. The .dmg URL path + filename: v1.0.0/TriLog.Viewer_1.0.0_universal.dmg
+#      GitHub normalizes spaces in asset names to dots in the download
+#      URL, so this is the form that actually resolves (not %20).
 sed -i '' \
-  "s|v${OLD_VERSION}/TriLog%20Viewer_${OLD_VERSION}_universal.dmg|v${NEW_VERSION}/TriLog%20Viewer_${NEW_VERSION}_universal.dmg|g" \
+  "s|v${OLD_VERSION}/TriLog\.Viewer_${OLD_VERSION}_universal.dmg|v${NEW_VERSION}/TriLog.Viewer_${NEW_VERSION}_universal.dmg|g" \
   viewer.html apps.html
 
 #   2. The version pill in the hero meta line
