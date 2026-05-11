@@ -11,10 +11,13 @@
 #   5. Staples the .dmg and verifies with stapler + spctl
 #   6. With --release: tags HEAD with vN.N.N, pushes, and creates a
 #      GitHub release with the .dmg attached
+#   7. With --website: also patches the trilog-netlify download URLs
+#      and version pill to point at the new release, commits, pushes
 #
 # Usage:
-#   scripts/release.sh             — build only (default)
-#   scripts/release.sh --release   — build + tag + push + GitHub release
+#   scripts/release.sh                       — build only
+#   scripts/release.sh --release             — build + tag + push + GitHub release
+#   scripts/release.sh --release --website   — and update the website too
 #
 # Required env vars (export in your shell or ~/.zshenv):
 #   APPLE_ID            — Apple ID email
@@ -30,13 +33,24 @@ set -euo pipefail
 
 # -- Parse args
 DO_RELEASE=0
-for arg in "$@"; do
-  case "$arg" in
-    --release|--ship) DO_RELEASE=1 ;;
+DO_WEBSITE=0
+WEBSITE_PATH=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --release|--ship) DO_RELEASE=1; shift ;;
+    --website)
+      DO_WEBSITE=1
+      # Accept either `--website` (use default path) or `--website PATH`
+      if [[ ${2:-} && "${2:-}" != --* ]]; then
+        WEBSITE_PATH="$2"; shift 2
+      else
+        shift
+      fi
+      ;;
     -h|--help)
       sed -n '2,/^set/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
-    *) printf '%s\n' "Unknown arg: $arg"; exit 2 ;;
+    *) printf '%s\n' "Unknown arg: $1"; exit 2 ;;
   esac
 done
 
@@ -224,4 +238,15 @@ say ""
 say "${GREEN}Released $TAG.${NC}"
 if [[ -n "$REPO_URL" ]]; then
   say "  $REPO_URL/releases/tag/$TAG"
+fi
+
+# -- 13. Optional: update the trilog-netlify website
+if [[ "$DO_WEBSITE" == 1 ]]; then
+  say ""
+  say "${DIM}Updating website download links…${NC}"
+  UPDATE_ARGS=("$VERSION" --push)
+  if [[ -n "$WEBSITE_PATH" ]]; then
+    UPDATE_ARGS+=(--website "$WEBSITE_PATH")
+  fi
+  "$SCRIPT_DIR/update-website.sh" "${UPDATE_ARGS[@]}"
 fi
