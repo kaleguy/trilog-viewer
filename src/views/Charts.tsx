@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -10,11 +10,14 @@ interface Props {
 
 // Preset window lengths the user can switch between. Step nav is
 // always one week regardless of which one is selected.
+// 1y was previously offered but the tauri-plugin-sql IPC deadlocks
+// on rapid consecutive selects, which made the full-year fetch
+// unusable. 24w is the safe ceiling — users navigate week-by-week
+// with the ‹ › arrows for older data.
 const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
   { weeks: 4, label: '4w' },
   { weeks: 12, label: '12w' },
   { weeks: 24, label: '24w' },
-  { weeks: 52, label: '1y' },
 ];
 const DEFAULT_WEEKS = 24;
 
@@ -121,7 +124,6 @@ export function Charts({ conn }: Props) {
 
   const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
   const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
-  const [perf, setPerf] = useState<string>('');
 
   const startDateKey = dateKey(days[0]);
   const endDateKey = dateKey(days[days.length - 1]);
@@ -131,151 +133,21 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const tStart = performance.now();
-    console.log(`[charts] effect fired window=${windowWeeks}w range=${startDateKey}..${endDateKey}`);
-
-    setPerf(`${windowWeeks}w · EFFECT FIRED at t=0`);
-
-    let banner = document.getElementById('charts-liveness-banner');
-    if (!banner) {
-      banner = document.createElement('div');
-      banner.id = 'charts-liveness-banner';
-      banner.style.cssText = `
-        position: fixed; top: 0; left: 0; right: 0;
-        background: #c0392b; color: #fff;
-        padding: 8px; font-size: 16px; font-weight: 700;
-        font-family: ui-monospace, monospace;
-        text-align: center; z-index: 99999;
-      `;
-      document.body.appendChild(banner);
-    }
-
-    let watchdogPhase = 'about-to-query';
-    let tickCount = 0;
-    const originalTitle = document.title;
-
-    // Multiple liveness probes — at least one should land if JS is
-    // doing ANYTHING. If banner stays at "EFFECT_BODY_SYNC_DONE",
-    // every async mechanism (microtask, setTimeout, rAF, setInterval)
-    // is being starved.
-    banner.textContent = 'CHECKPOINT 0: synchronous setup';
-
-    // Microtask
-    Promise.resolve().then(() => {
-      if (cancelled) return;
-      if (banner) banner.textContent = 'CHECKPOINT 1: microtask fired';
-    });
-
-    // setTimeout 0
-    setTimeout(() => {
-      if (cancelled) return;
-      if (banner) banner.textContent = 'CHECKPOINT 2: setTimeout(0) fired';
-    }, 0);
-
-    // requestAnimationFrame chain — most reliable liveness indicator
-    let rafCount = 0;
-    const rafTick = () => {
-      if (cancelled) return;
-      rafCount++;
-      if (banner) {
-        banner.textContent = `CHECKPOINT 3: rAF#${rafCount} · ${watchdogPhase} · ${((performance.now() - tStart) / 1000).toFixed(1)}s`;
-      }
-      requestAnimationFrame(rafTick);
-    };
-    requestAnimationFrame(rafTick);
-
-    // setInterval fallback
-    const watchdog = setInterval(() => {
-      if (cancelled) return;
-      tickCount++;
-      const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
-      document.title = `TICK#${tickCount} ${watchdogPhase} ${elapsed}s`;
-      setPerf(`${windowWeeks}w · tick#${tickCount} · ${watchdogPhase} · ${elapsed}s`);
-    }, 100);
-    const restoreTitle = () => { document.title = originalTitle; };
-    void restoreTitle;
-
-    banner.textContent = 'CHECKPOINT BODY_END: about to defer runQuery 2s';
-
-    const runQuery = async () => {
-      try {
-        watchdogPhase = '1/5 querying day_entries…';
-        const tQ1Start = performance.now();
-        const rows = await getDayEntriesRange(conn, startDateKey, endDateKey);
+    Promise.all([
+      getDayEntriesRange(conn, startDateKey, endDateKey),
+      // Pad activity fetch by ±1 day so cross-midnight entries on the
+      // edges of the window credit the correct cells.
+      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
+    ])
+      .then(([rows, activities]) => {
         if (cancelled) return;
-        const tQ1End = performance.now();
-        console.log(`[charts] day_entries done rows=${rows.length} dur=${(tQ1End - tQ1Start).toFixed(0)}ms`);
-
-        // Chunk activity_entries into 4 quarter-year queries, run
-        // serially. If the single-call query was hanging on payload
-        // size or some per-call limit, smaller chunks should sail.
-        const allActivities: ActivityEntry[] = [];
-        const totalMs = (endMs + MS_PER_DAY) - (startMs - MS_PER_DAY);
-        const CHUNKS = 4;
-        const tQ2Start = performance.now();
-        for (let i = 0; i < CHUNKS; i++) {
-          const chunkStart = (startMs - MS_PER_DAY) + (totalMs * i) / CHUNKS;
-          const chunkEnd = (startMs - MS_PER_DAY) + (totalMs * (i + 1)) / CHUNKS;
-          watchdogPhase = `2/5 activities chunk ${i + 1}/${CHUNKS}…`;
-          const tChunkStart = performance.now();
-          const chunk = await getActivityEntries(conn, chunkStart, chunkEnd);
-          const tChunkEnd = performance.now();
-          console.log(`[charts] activity chunk ${i + 1}/${CHUNKS} rows=${chunk.length} dur=${(tChunkEnd - tChunkStart).toFixed(0)}ms`);
-          if (cancelled) return;
-          allActivities.push(...chunk);
-        }
-        const tQ2End = performance.now();
-        console.log(`[charts] all activity chunks done total=${allActivities.length} dur=${(tQ2End - tQ2Start).toFixed(0)}ms`);
-
-        watchdogPhase = '3/5 building map…';
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
-        const tMapEnd = performance.now();
-
-        watchdogPhase = '4/5 aggregating…';
-        const totals = aggregateActivities(allActivities);
-        const tAggEnd = performance.now();
-        console.log(`[charts] aggregated dur=${(tAggEnd - tMapEnd).toFixed(0)}ms`);
-
-        watchdogPhase = '5/5 committing…';
         setRowsByDate(m);
-        setActivityTotals(totals);
-        console.log(`[charts] state set, awaiting React commit`);
-
-        requestAnimationFrame(() => {
-          clearInterval(watchdog);
-          const tDone = performance.now();
-          console.log(`[charts] rendered, total=${(tDone - tStart).toFixed(0)}ms`);
-          setPerf(
-            `${windowWeeks}w · done · ` +
-            `q1 ${(tQ1End - tQ1Start).toFixed(0)} · ` +
-            `q2 ${(tQ2End - tQ2Start).toFixed(0)} · ` +
-            `agg ${(tAggEnd - tMapEnd).toFixed(0)} · ` +
-            `render ${(tDone - tAggEnd).toFixed(0)} · ` +
-            `total ${(tDone - tStart).toFixed(0)}ms`
-          );
-        });
-      } catch (err) {
-        clearInterval(watchdog);
-        console.error('[charts] fetch error', err);
-        setPerf(`${windowWeeks}w · error: ${String(err).slice(0, 80)}`);
-      }
-    };
-    // Defer runQuery by 2 seconds. If the banner ticks during those
-    // 2 seconds, the freeze happens IN the SQL invoke. If the banner
-    // never ticks even during the 2-second delay, the freeze is in
-    // the React commit / WebKit paint of the post-effect render.
-    setTimeout(() => {
-      if (cancelled) return;
-      if (banner) banner.textContent = 'CHECKPOINT runQuery: about to call runQuery()';
-      runQuery();
-    }, 2000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(watchdog);
-      restoreTitle();
-    };
+        setActivityTotals(aggregateActivities(activities));
+      })
+      .catch(() => { /* fall back to empty */ });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
 
@@ -306,23 +178,8 @@ export function Charts({ conn }: Props) {
             {opt.label}
           </button>
         ))}
-        <span
-          style={{
-            marginLeft: 12,
-            fontSize: 11,
-            color: '#888',
-            fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-          }}
-        >
-          {perf}
-        </span>
       </div>
-      {days.length > 200 ? (
-        <div style={{ padding: 40, color: '#888', textAlign: 'center' }}>
-          1y diagnostic — strips not rendered. Watching liveness banner.
-        </div>
-      ) : null}
-      {days.length <= 200 && <MoodEnergyStrip
+      <MoodEnergyStrip
         days={days}
         rowsByDate={rowsByDate}
         endDate={endDate}
@@ -330,8 +187,8 @@ export function Charts({ conn }: Props) {
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
         onHoverIndex={handleHoverIndex}
-      />}
-      {days.length <= 200 && <SleepStrip
+      />
+      <SleepStrip
         days={days}
         rowsByDate={rowsByDate}
         endDate={endDate}
@@ -339,8 +196,8 @@ export function Charts({ conn }: Props) {
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
         onHoverIndex={handleHoverIndex}
-      />}
-      {days.length <= 200 && <ActivityStrip
+      />
+      <ActivityStrip
         days={days}
         activityTotals={activityTotals}
         endDate={endDate}
@@ -348,7 +205,7 @@ export function Charts({ conn }: Props) {
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
         onHoverIndex={handleHoverIndex}
-      />}
+      />
     </div>
   );
 }
@@ -541,28 +398,10 @@ function MoodEnergyStrip({
 
   const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
 
-  // Skip per-day dots on long windows — at 1y each dot is sub-pixel-
-  // tight against its neighbors, and 1,100 individual <circle>
-  // elements is what was making 1y unresponsive in WebKit. The lines
-  // alone read fine at 1y; users can switch to 24w to see daily marks.
-  const showDots = days.length <= 200;
-
   // The heavy SVG body — memoized so hover-induced strip re-renders
   // get back the same React element reference and React's reconciler
   // bails out without diffing the children.
   const svgEl = useMemo(() => (
-    days.length > 200 ? (
-      <svg
-        className="chart-svg"
-        viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
-        preserveAspectRatio="none"
-        role="img"
-      >
-        <text x={VBOX_W / 2} y={VBOX_H / 2} fill="#666" fontSize="2" textAnchor="middle">
-          1y diagnostic — chart disabled
-        </text>
-      </svg>
-    ) :
     <svg
       className="chart-svg"
       viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
@@ -583,7 +422,7 @@ function MoodEnergyStrip({
       ))}
 
       {/* Week-boundary verticals — every 7 days */}
-      {days.length <= 200 && days.map((d, i) => (
+      {days.map((d, i) => (
         d.getDay() === 0 && i !== 0 ? (
           <line
             key={`wk-${i}`}
@@ -623,7 +462,7 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {showDots && showWellness && wellnessPoints.map((p) => (
+      {showWellness && wellnessPoints.map((p) => (
         <circle
           key={`well-pt-${p.i}`}
           cx={p.x}
@@ -640,7 +479,7 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {showDots && showMood && moodPoints.map((p) => (
+      {showMood && moodPoints.map((p) => (
         <circle
           key={`mood-pt-${p.i}`}
           cx={p.x}
@@ -657,7 +496,7 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {showDots && showEnergy && energyPoints.map((p) => (
+      {showEnergy && energyPoints.map((p) => (
         <circle
           key={`energy-pt-${p.i}`}
           cx={p.x}
@@ -672,7 +511,7 @@ function MoodEnergyStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [
     days, todayMs,
-    showMood, showEnergy, showWellness, showDots,
+    showMood, showEnergy, showWellness,
     moodSegments, moodPoints,
     energySegments, energyPoints,
     wellnessSegments, wellnessPoints,
@@ -843,9 +682,6 @@ function SleepStrip({
   const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
 
   const svgEl = useMemo(() => (
-    days.length > 200 ? (
-      <svg className="chart-svg" viewBox={`0 0 ${VBOX_W} ${VBOX_H}`} preserveAspectRatio="none" role="img" />
-    ) :
     <svg
       className="chart-svg"
       viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
@@ -864,7 +700,7 @@ function SleepStrip({
         />
       ))}
 
-      {days.length <= 200 && days.map((d, i) => (
+      {days.map((d, i) => (
         d.getDay() === 0 && i !== 0 ? (
           <line
             key={`wk-${i}`}
@@ -1069,9 +905,6 @@ function ActivityStrip({
   const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
 
   const svgEl = useMemo(() => (
-    days.length > 200 ? (
-      <svg className="chart-svg" viewBox={`0 0 ${VBOX_W} ${VBOX_H}`} preserveAspectRatio="none" role="img" />
-    ) :
     <svg
       className="chart-svg"
       viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
@@ -1090,7 +923,7 @@ function ActivityStrip({
         />
       ))}
 
-      {days.length <= 200 && days.map((d, i) => (
+      {days.map((d, i) => (
         d.getDay() === 0 && i !== 0 ? (
           <line
             key={`wk-${i}`}
