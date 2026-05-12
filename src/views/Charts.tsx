@@ -44,12 +44,9 @@ function isoWeekNumber(date: Date): number {
 }
 
 // Module-level formatters — Date.prototype.toLocaleDateString recreates
-// an Intl.DateTimeFormat on every call (~0.05ms each). On the 1y chart
-// we render ~15k tooltips, so reusing one formatter cuts initial mount
-// by an order of magnitude.
-const TOOLTIP_DATE_FMT = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short', month: 'short', day: 'numeric',
-});
+// an Intl.DateTimeFormat on every call (~0.05ms each). The DayRow
+// renders 364 cells on a 1y view, so reusing one formatter saves
+// hundreds of milliseconds of mount cost.
 const FULL_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
 });
@@ -454,19 +451,18 @@ function MoodEnergyStrip({
         );
       })()}
 
-      {/* Wellness paints first — white line, white dots so it
-          doesn't compete with mood-green. */}
-      {showWellness && wellnessSegments.map((s, i) => (
-        <line
-          key={`well-seg-${i}`}
-          x1={s.x1}
-          y1={s.y1}
-          x2={s.x2}
-          y2={s.y2}
+      {/* Lines collapsed to one <path> per series — 1y view used
+          to render ~1,000 <line> elements just for the line plots;
+          this brings it down to 3. Dots stay individual since each
+          has its own fill color (palette per value). Tooltips
+          removed: the SVG has pointer-events:none anyway. */}
+      {showWellness && wellnessSegments.length > 0 && (
+        <path
+          d={wellnessSegments.map((s) => `M${s.x1} ${s.y1}L${s.x2} ${s.y2}`).join('')}
           className="chart-wellness-line"
           vectorEffect="non-scaling-stroke"
         />
-      ))}
+      )}
       {showWellness && wellnessPoints.map((p) => (
         <circle
           key={`well-pt-${p.i}`}
@@ -475,27 +471,16 @@ function MoodEnergyStrip({
           r={0.55}
           fill={WELLNESS_LINE_COLOR}
           vectorEffect="non-scaling-stroke"
-        >
-          <title>
-            {`${TOOLTIP_DATE_FMT.format(days[p.i])} — wellness ${p.level}`}
-          </title>
-        </circle>
+        />
       ))}
 
-      {/* Mood line next so energy paints on top. Line stays
-          green; dots use the iPhone mood palette per rounded
-          score (upset red ↦ happy green). */}
-      {showMood && moodSegments.map((s, i) => (
-        <line
-          key={`mood-seg-${i}`}
-          x1={s.x1}
-          y1={s.y1}
-          x2={s.x2}
-          y2={s.y2}
+      {showMood && moodSegments.length > 0 && (
+        <path
+          d={moodSegments.map((s) => `M${s.x1} ${s.y1}L${s.x2} ${s.y2}`).join('')}
           className="chart-mood-line"
           vectorEffect="non-scaling-stroke"
         />
-      ))}
+      )}
       {showMood && moodPoints.map((p) => (
         <circle
           key={`mood-pt-${p.i}`}
@@ -504,27 +489,16 @@ function MoodEnergyStrip({
           r={0.55}
           fill={moodColorForScore(p.level)}
           vectorEffect="non-scaling-stroke"
-        >
-          <title>
-            {`${TOOLTIP_DATE_FMT.format(days[p.i])} — mood ${p.level.toFixed(1)}`}
-          </title>
-        </circle>
+        />
       ))}
 
-      {/* Energy line + dots — yellow line, ENERGY_COLORS dots
-          (matches iPhone palette). Painted last so points sit on
-          top of overlapping mood segments. */}
-      {showEnergy && energySegments.map((s, i) => (
-        <line
-          key={`energy-seg-${i}`}
-          x1={s.x1}
-          y1={s.y1}
-          x2={s.x2}
-          y2={s.y2}
+      {showEnergy && energySegments.length > 0 && (
+        <path
+          d={energySegments.map((s) => `M${s.x1} ${s.y1}L${s.x2} ${s.y2}`).join('')}
           className="chart-energy-line"
           vectorEffect="non-scaling-stroke"
         />
-      ))}
+      )}
       {showEnergy && energyPoints.map((p) => (
         <circle
           key={`energy-pt-${p.i}`}
@@ -533,11 +507,7 @@ function MoodEnergyStrip({
           r={0.55}
           fill={ENERGY_COLORS[p.level - 1]}
           vectorEffect="non-scaling-stroke"
-        >
-          <title>
-            {`${TOOLTIP_DATE_FMT.format(days[p.i])} — energy ${p.level}`}
-          </title>
-        </circle>
+        />
       ))}
     </svg>
     // colW, plotH, xFor, yFor are derived from `days`; deps below
@@ -752,21 +722,38 @@ function SleepStrip({
         );
       })()}
 
-      {bars.map((b) => (
-        <rect
-          key={`sleep-${b.i}`}
-          x={b.x}
-          y={b.y}
-          width={b.width}
-          height={b.height}
-          fill={b.color}
-          rx={0.1}
-        >
-          <title>
-            {`${TOOLTIP_DATE_FMT.format(days[b.i])} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
-          </title>
-        </rect>
-      ))}
+      {/* One <path> per quality color — collapses 364 <rect>s into
+          ≤5 paths on the 1y view. Same rounded-corner look is lost
+          (paths use straight rects), but the perf win at 1y matters
+          more than the 0.1 viewBox-unit corner radius. */}
+      {RATING_COLORS.map((color, qIdx) => {
+        const q = qIdx + 1;
+        let d = '';
+        for (const b of bars) {
+          if (b.quality !== q) continue;
+          const x1 = b.x;
+          const x2 = b.x + b.width;
+          const y1 = b.y;
+          const y2 = b.y + b.height;
+          d += `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+        }
+        if (!d) return null;
+        return <path key={`sleep-q${q}`} d={d} fill={color} />;
+      })}
+      {/* Bars whose quality wasn't set still need to render — group
+          them as the gray catch-all. */}
+      {(() => {
+        let d = '';
+        for (const b of bars) {
+          if (b.quality != null && b.quality >= 1 && b.quality <= 5) continue;
+          const x1 = b.x;
+          const x2 = b.x + b.width;
+          const y1 = b.y;
+          const y2 = b.y + b.height;
+          d += `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+        }
+        return d ? <path d={d} fill="#6B7280" /> : null;
+      })()}
     </svg>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [days, todayMs, bars]);
@@ -958,22 +945,25 @@ function ActivityStrip({
         );
       })()}
 
-      {segmentsByDay.map((day) => (
-        day.segments.map((seg, j) => (
-          <rect
-            key={`act-${day.i}-${j}`}
-            x={day.x}
-            y={seg.y}
-            width={day.width}
-            height={seg.h}
-            fill={seg.color}
-          >
-            <title>
-              {`${TOOLTIP_DATE_FMT.format(days[day.i])} — ${ACTIVITY_TYPE_LABELS[seg.type] ?? seg.type}: ${seg.hours.toFixed(1)}h`}
-            </title>
-          </rect>
-        ))
-      ))}
+      {/* One <path> per activity type — collapses 1y's ~2,000
+          <rect>s into ~10 path elements. Each subpath is one day's
+          segment for that type drawn as four straight lines. */}
+      {ACTIVITY_STACK_ORDER.map((type) => {
+        const color = ACTIVITY_COLORS[type] ?? ACTIVITY_COLORS.other ?? '#767676';
+        let d = '';
+        for (const day of segmentsByDay) {
+          for (const seg of day.segments) {
+            if (seg.type !== type) continue;
+            const x1 = day.x;
+            const x2 = day.x + day.width;
+            const y1 = seg.y;
+            const y2 = seg.y + seg.h;
+            d += `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+          }
+        }
+        if (!d) return null;
+        return <path key={`act-${type}`} d={d} fill={color} />;
+      })}
     </svg>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [days, todayMs, segmentsByDay]);

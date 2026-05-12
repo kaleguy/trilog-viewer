@@ -127,6 +127,11 @@
   width: 100%;
   height: 100%;
   display: block;
+  /* Skip hit-testing every individual shape. With 1y of data the
+     SVG has thousands of children and the browser was burning the
+     UI thread on hover. The crosshair overlay handles cursor
+     tracking via the parent div, so we don't need per-shape hits. */
+  pointer-events: none;
 }
 
 /* Crosshair overlay — sits over the SVG (not inside it) so hover
