@@ -178,7 +178,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1 className="app-title">TriLog Viewer</h1>
+        <h1 className="app-title">TriLog Viewer <span style={{ opacity: 0.5, fontSize: '0.7em', fontWeight: 400 }}>1y-chunked</span></h1>
         <nav className="app-tabs">
           {visibleTabs.map((t) => (
             <button

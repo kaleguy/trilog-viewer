@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -10,16 +10,21 @@ interface Props {
 
 // Preset window lengths the user can switch between. Step nav is
 // always one week regardless of which one is selected.
-// 1y was previously offered but the tauri-plugin-sql IPC deadlocks
-// on rapid consecutive selects, which made the full-year fetch
-// unusable. 24w is the safe ceiling — users navigate week-by-week
-// with the ‹ › arrows for older data.
 const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
   { weeks: 4, label: '4w' },
   { weeks: 12, label: '12w' },
   { weeks: 24, label: '24w' },
+  { weeks: 52, label: '1y' },
 ];
 const DEFAULT_WEEKS = 24;
+
+// Windows above this threshold split the activity_entries query into
+// quarter-year chunks with a delay between each — tauri-plugin-sql's
+// IPC bridge deadlocks on rapid consecutive selects, so we give it
+// breathing room.
+const LARGE_WINDOW_THRESHOLD_DAYS = 200;
+const CHUNK_DELAY_MS = 1000;
+const CHUNKS = 4;
 
 function startOfLocalDay(date: Date): Date {
   const d = new Date(date);
@@ -124,6 +129,7 @@ export function Charts({ conn }: Props) {
 
   const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
   const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
+  const [loadingStatus, setLoadingStatus] = useState<string>('');
 
   const startDateKey = dateKey(days[0]);
   const endDateKey = dateKey(days[days.length - 1]);
@@ -133,20 +139,50 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getDayEntriesRange(conn, startDateKey, endDateKey),
-      // Pad activity fetch by ±1 day so cross-midnight entries on the
-      // edges of the window credit the correct cells.
-      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
-    ])
-      .then(([rows, activities]) => {
+    const isLargeWindow = days.length > LARGE_WINDOW_THRESHOLD_DAYS;
+
+    const fetchActivities = async (): Promise<ActivityEntry[]> => {
+      // Small windows: one IPC call.
+      if (!isLargeWindow) {
+        return getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY);
+      }
+      // Large windows: chunk into quarters with a delay between each
+      // call. Rapid consecutive selects deadlock the SQL plugin.
+      const all: ActivityEntry[] = [];
+      const totalMs = (endMs + MS_PER_DAY) - (startMs - MS_PER_DAY);
+      for (let i = 0; i < CHUNKS; i++) {
+        if (cancelled) return all;
+        setLoadingStatus(`loading… activities ${i + 1}/${CHUNKS}`);
+        const chunkStart = (startMs - MS_PER_DAY) + (totalMs * i) / CHUNKS;
+        const chunkEnd = (startMs - MS_PER_DAY) + (totalMs * (i + 1)) / CHUNKS;
+        const chunk = await getActivityEntries(conn, chunkStart, chunkEnd);
+        all.push(...chunk);
+        if (i < CHUNKS - 1) {
+          await new Promise((r) => setTimeout(r, CHUNK_DELAY_MS));
+        }
+      }
+      return all;
+    };
+
+    const run = async () => {
+      try {
+        if (isLargeWindow) setLoadingStatus('loading… day entries');
+        const rows = await getDayEntriesRange(conn, startDateKey, endDateKey);
         if (cancelled) return;
+        const activities = await fetchActivities();
+        if (cancelled) return;
+        if (isLargeWindow) setLoadingStatus('aggregating…');
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
+        const totals = aggregateActivities(activities);
         setRowsByDate(m);
-        setActivityTotals(aggregateActivities(activities));
-      })
-      .catch(() => { /* fall back to empty */ });
+        setActivityTotals(totals);
+        setLoadingStatus('');
+      } catch {
+        setLoadingStatus('');
+      }
+    };
+    run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
@@ -178,6 +214,11 @@ export function Charts({ conn }: Props) {
             {opt.label}
           </button>
         ))}
+        {loadingStatus && (
+          <span style={{ marginLeft: 12, fontSize: 11, color: '#888', fontFamily: 'ui-monospace, monospace' }}>
+            {loadingStatus}
+          </span>
+        )}
       </div>
       <MoodEnergyStrip
         days={days}
