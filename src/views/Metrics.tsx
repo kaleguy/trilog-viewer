@@ -706,9 +706,10 @@ export function Metrics({ conn, settings }: Props) {
     let cancelled = false;
     setLoading(true);
 
-    // Serialize the six invokes — running them in parallel via
-    // Promise.all was contributing to tauri-plugin-sql IPC deadlocks.
-    (async () => {
+    // Debounce + serialize — holding ‹ used to fire six invokes per
+    // click and the parallel load would deadlock the SQL plugin's
+    // IPC. Debounce coalesces rapid clicks into a single query set.
+    const timer = setTimeout(async () => {
       const breather = () => new Promise((r) => setTimeout(r, 30));
       try {
         const dayRows = await getDayEntriesRange(conn, startDateKey, endDateKey);
@@ -758,9 +759,12 @@ export function Metrics({ conn, settings }: Props) {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    }, 300);
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [conn, days, startMs, endMs, startDateKey, endDateKey]);
 
   // METRICS is in iPhone's `rowLabels` array order, which the iPhone

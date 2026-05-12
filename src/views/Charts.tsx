@@ -164,12 +164,12 @@ export function Charts({ conn }: Props) {
       return;
     }
     let cancelled = false;
-    // Serialize the two SQL invokes (not Promise.all). Parallel
-    // invokes appear to contribute to tauri-plugin-sql's IPC
-    // instability — running them in sequence with a brief breather
-    // between has been much more reliable across many navigation
-    // clicks.
-    (async () => {
+    // Debounce by 300ms so a burst of ‹ ‹ ‹ clicks coalesces into
+    // one query (the user's final destination) instead of firing N
+    // serial invokes. Without this, holding the back arrow piles up
+    // dozens of in-flight IPC calls and eventually deadlocks the
+    // tauri-plugin-sql bridge.
+    const timer = setTimeout(async () => {
       try {
         const rows = await getDayEntriesRange(conn, startDateKey, endDateKey);
         if (cancelled) return;
@@ -187,8 +187,11 @@ export function Charts({ conn }: Props) {
       } catch {
         /* fall back to empty */
       }
-    })();
-    return () => { cancelled = true; };
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
 

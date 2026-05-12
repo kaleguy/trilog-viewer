@@ -206,10 +206,10 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
     // phase that started before the visible range still paints its tail.
     const padMs = 2 * MS_PER_DAY;
     const cycleLookbackMs = CYCLE_LOOKBACK_DAYS * MS_PER_DAY;
-    // Serialize the six invokes. Running them in parallel via
-    // Promise.all was contributing to tauri-plugin-sql IPC deadlocks
-    // after a few rounds of date navigation.
-    (async () => {
+    // Debounce + serialize. Holding ‹ piles up many cancelled effects,
+    // each starting six in-flight SQL invokes. Debouncing waits for
+    // the user to settle on a date before firing the queries.
+    const timer = setTimeout(async () => {
       const breather = () => new Promise((r) => setTimeout(r, 30));
       try {
         const m = await getMoodEntries(conn, startMs, endMs);
@@ -244,8 +244,11 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
-    return () => { cancelled = true; };
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [conn, startMs, endMs]);
 
   const buckets = useMemo(
