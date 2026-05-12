@@ -675,17 +675,6 @@ function SleepStrip({
           {/* Shared crosshair — `xFor` in this strip returns the
               column's left edge, so add half-col to center on the
               same day as the MoodEnergy strip's dot. */}
-          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
-            <line
-              x1={xFor(hoveredDayIndex) + colW / 2}
-              x2={xFor(hoveredDayIndex) + colW / 2}
-              y1={PAD_TOP}
-              y2={PAD_TOP + plotH}
-              className="chart-cursor-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-
           {bars.map((b) => (
             <rect
               key={`sleep-${b.i}`}
@@ -701,6 +690,18 @@ function SleepStrip({
               </title>
             </rect>
           ))}
+
+          {/* Crosshair last so it paints over the bars. */}
+          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
+            <line
+              x1={xFor(hoveredDayIndex) + colW / 2}
+              x2={xFor(hoveredDayIndex) + colW / 2}
+              y1={PAD_TOP}
+              y2={PAD_TOP + plotH}
+              className="chart-cursor-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
         </svg>
 
         <div className="chart-day-row">
@@ -918,19 +919,9 @@ function ActivityStrip({
             );
           })()}
 
-          {/* Shared crosshair */}
-          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
-            <line
-              x1={xFor(hoveredDayIndex) + colW / 2}
-              x2={xFor(hoveredDayIndex) + colW / 2}
-              y1={PAD_TOP}
-              y2={PAD_TOP + plotH}
-              className="chart-cursor-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-
-          {/* Stacked bars */}
+          {/* Stacked bars — painted before the crosshair so the
+              vertical guideline sits on top of the bars and stays
+              visible. */}
           {segmentsByDay.map((day) => (
             day.segments.map((seg, j) => (
               <rect
@@ -947,6 +938,18 @@ function ActivityStrip({
               </rect>
             ))
           ))}
+
+          {/* Shared crosshair — last so it paints on top of the bars */}
+          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
+            <line
+              x1={xFor(hoveredDayIndex) + colW / 2}
+              x2={xFor(hoveredDayIndex) + colW / 2}
+              y1={PAD_TOP}
+              y2={PAD_TOP + plotH}
+              className="chart-cursor-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
         </svg>
 
         <div className="chart-day-row">
