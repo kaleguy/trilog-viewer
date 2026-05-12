@@ -148,7 +148,7 @@ function App() {
   if (!db) {
     return (
       <main className="container">
-        <h1>TriLog Viewer <span style={{ opacity: 0.5, fontSize: '0.7em', fontWeight: 400 }}>build perf-11</span></h1>
+        <h1>TriLog Viewer <span style={{ opacity: 0.5, fontSize: '0.7em', fontWeight: 400 }}>build perf-12</span></h1>
         <div className="card">
           <p>Open a <code>journal.db</code> exported from TriLog.</p>
           <button type="button" onClick={openDb} disabled={loading}>
@@ -178,7 +178,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1 className="app-title">TriLog Viewer <span style={{ opacity: 0.5, fontSize: '0.7em', fontWeight: 400 }}>build perf-11</span></h1>
+        <h1 className="app-title">TriLog Viewer <span style={{ opacity: 0.5, fontSize: '0.7em', fontWeight: 400 }}>build perf-12</span></h1>
         <nav className="app-tabs">
           {visibleTabs.map((t) => (
             <button

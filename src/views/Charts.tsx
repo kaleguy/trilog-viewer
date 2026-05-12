@@ -283,7 +283,12 @@ export function Charts({ conn }: Props) {
           {perf}
         </span>
       </div>
-      <MoodEnergyStrip
+      {days.length > 200 ? (
+        <div style={{ padding: 40, color: '#888', textAlign: 'center' }}>
+          1y diagnostic — strips not rendered. Watching liveness banner.
+        </div>
+      ) : null}
+      {days.length <= 200 && <MoodEnergyStrip
         days={days}
         rowsByDate={rowsByDate}
         endDate={endDate}
@@ -291,8 +296,8 @@ export function Charts({ conn }: Props) {
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
         onHoverIndex={handleHoverIndex}
-      />
-      <SleepStrip
+      />}
+      {days.length <= 200 && <SleepStrip
         days={days}
         rowsByDate={rowsByDate}
         endDate={endDate}
@@ -300,8 +305,8 @@ export function Charts({ conn }: Props) {
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
         onHoverIndex={handleHoverIndex}
-      />
-      <ActivityStrip
+      />}
+      {days.length <= 200 && <ActivityStrip
         days={days}
         activityTotals={activityTotals}
         endDate={endDate}
@@ -309,7 +314,7 @@ export function Charts({ conn }: Props) {
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
         onHoverIndex={handleHoverIndex}
-      />
+      />}
     </div>
   );
 }
