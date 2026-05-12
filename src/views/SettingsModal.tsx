@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import './SettingsModal.css';
 
@@ -78,17 +79,34 @@ function joinBirthdate(y: string, m: string, d: string): string {
 }
 
 export function SettingsModal({ open, settings, onChange, onClose }: Props) {
+  // Local draft for the birthdate inputs. We need this because typing
+  // a single digit (e.g. "1" in year) produces an invalid date and
+  // joinBirthdate returns '' — if we stored only the joined value,
+  // every keystroke would clear the field on the next render.
+  // The draft keeps what the user is typing visible; we only push
+  // back into `settings.birthdate` when all three parts form a real
+  // date (or when they're cleared back to empty).
+  const [draft, setDraft] = useState(() => parseBirthdate(settings.birthdate));
+
+  // Re-sync when the underlying setting changes from outside (e.g. a
+  // new bundle opens with a different stored birthdate).
+  useEffect(() => {
+    setDraft(parseBirthdate(settings.birthdate));
+  }, [settings.birthdate]);
+
   if (!open) return null;
-  const bd = parseBirthdate(settings.birthdate);
 
   const setBirthdatePart = (part: 'y' | 'm' | 'd', value: string) => {
-    const next = { ...bd, [part]: value };
+    const next = { ...draft, [part]: value };
+    setDraft(next);
     const joined = joinBirthdate(next.y, next.m, next.d);
-    // Persist only when the date is fully valid; leave the partial state
-    // visible in the inputs by stashing it in the `birthdate` field as
-    // an "almost-valid" value would be jarring — instead we store '' until
-    // the user finishes a valid date and reconstruct draft on next open.
-    onChange({ ...settings, birthdate: joined });
+    if (joined) {
+      onChange({ ...settings, birthdate: joined });
+    } else if (next.y === '' && next.m === '' && next.d === '') {
+      // All three cleared — clear the persisted value too.
+      onChange({ ...settings, birthdate: '' });
+    }
+    // Otherwise leave the persisted value alone; user is mid-typing.
   };
 
   return (
@@ -154,7 +172,7 @@ export function SettingsModal({ open, settings, onChange, onClose }: Props) {
                       <input
                         type="number"
                         placeholder="YYYY"
-                        value={bd.y}
+                        value={draft.y}
                         min={1900}
                         max={new Date().getFullYear()}
                         onChange={(e) => setBirthdatePart('y', e.target.value)}
@@ -163,7 +181,7 @@ export function SettingsModal({ open, settings, onChange, onClose }: Props) {
                       <input
                         type="number"
                         placeholder="MM"
-                        value={bd.m}
+                        value={draft.m}
                         min={1}
                         max={12}
                         onChange={(e) => setBirthdatePart('m', e.target.value)}
@@ -172,7 +190,7 @@ export function SettingsModal({ open, settings, onChange, onClose }: Props) {
                       <input
                         type="number"
                         placeholder="DD"
-                        value={bd.d}
+                        value={draft.d}
                         min={1}
                         max={31}
                         onChange={(e) => setBirthdatePart('d', e.target.value)}
