@@ -31,6 +31,15 @@
 
 set -euo pipefail
 
+# Make sure cargo / rustup are on PATH even when the script is run
+# from a context that didn't source ~/.cargo/env (Bash subshells,
+# CI runners, etc.).
+if ! command -v cargo >/dev/null 2>&1; then
+  if [[ -d "$HOME/.cargo/bin" ]]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+  fi
+fi
+
 # -- Parse args
 DO_RELEASE=0
 DO_WEBSITE=0
@@ -221,8 +230,8 @@ fi
 
 # Push HEAD first so the tag isn't ahead of the branch on the remote
 say ""
-say "${DIM}Pushing $BRANCH…${NC}"
-git push origin "$BRANCH"
+say "${DIM}Pushing ${BRANCH}…${NC}"
+git push origin "${BRANCH}"
 
 say "${DIM}Tagging $TAG and pushing…${NC}"
 git tag -a "$TAG" -m "$TAG"
