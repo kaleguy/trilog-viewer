@@ -121,6 +121,7 @@ export function Charts({ conn }: Props) {
 
   const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
   const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
+  const [perf, setPerf] = useState<string>('');
 
   const startDateKey = dateKey(days[0]);
   const endDateKey = dateKey(days[days.length - 1]);
@@ -130,6 +131,9 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    const tStart = performance.now();
+    setPerf(`${windowWeeks}w · fetching…`);
+    const tQueryStart = performance.now();
     Promise.all([
       getDayEntriesRange(conn, startDateKey, endDateKey),
       // Pad activity fetch by ±1 day so cross-midnight entries on the
@@ -138,12 +142,32 @@ export function Charts({ conn }: Props) {
     ])
       .then(([rows, activities]) => {
         if (cancelled) return;
+        const tQueryEnd = performance.now();
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
+        const tMapEnd = performance.now();
+        const totals = aggregateActivities(activities);
+        const tAggEnd = performance.now();
         setRowsByDate(m);
-        setActivityTotals(aggregateActivities(activities));
+        setActivityTotals(totals);
+        // Defer the render-time measurement to the next frame so we
+        // catch React commit + browser layout cost.
+        requestAnimationFrame(() => {
+          const tDone = performance.now();
+          setPerf(
+            `${windowWeeks}w · ` +
+            `query ${(tQueryEnd - tQueryStart).toFixed(0)}ms · ` +
+            `map ${(tMapEnd - tQueryEnd).toFixed(0)}ms · ` +
+            `agg ${(tAggEnd - tMapEnd).toFixed(0)}ms · ` +
+            `render ${(tDone - tAggEnd).toFixed(0)}ms · ` +
+            `rows ${rows.length}/${activities.length} · ` +
+            `total ${(tDone - tStart).toFixed(0)}ms`
+          );
+        });
       })
-      .catch(() => { /* fall back to empty */ });
+      .catch((err) => {
+        setPerf(`${windowWeeks}w · error: ${String(err).slice(0, 80)}`);
+      });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
@@ -175,6 +199,16 @@ export function Charts({ conn }: Props) {
             {opt.label}
           </button>
         ))}
+        <span
+          style={{
+            marginLeft: 12,
+            fontSize: 11,
+            color: '#888',
+            fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+          }}
+        >
+          {perf}
+        </span>
       </div>
       <MoodEnergyStrip
         days={days}
