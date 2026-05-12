@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
 import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
@@ -91,7 +91,14 @@ export function Charts({ conn }: Props) {
   // strip in the column draws a vertical line at the same day so the
   // user can sight-read across (energy dot ↔ sleep bar for the same
   // date). `null` = no hover.
+  //
+  // The crosshair renders as an absolute-positioned overlay (not as an
+  // SVG <line>), so updating it doesn't force React to reconcile the
+  // thousands of data SVG elements on every mousemove.
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  const handleHoverIndex = useCallback((i: number | null) => {
+    setHoveredDayIndex((prev) => (prev === i ? prev : i));
+  }, []);
 
   // N weeks of days, ending on `endDate` (a Saturday), starting on
   // the Sunday (N*7 − 1) days earlier. Future days inside the window
@@ -171,7 +178,7 @@ export function Charts({ conn }: Props) {
         onBack={stepBack}
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
-        onHoverIndex={setHoveredDayIndex}
+        onHoverIndex={handleHoverIndex}
       />
       <SleepStrip
         days={days}
@@ -180,7 +187,7 @@ export function Charts({ conn }: Props) {
         onBack={stepBack}
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
-        onHoverIndex={setHoveredDayIndex}
+        onHoverIndex={handleHoverIndex}
       />
       <ActivityStrip
         days={days}
@@ -189,7 +196,7 @@ export function Charts({ conn }: Props) {
         onBack={stepBack}
         onForward={stepForward}
         hoveredDayIndex={hoveredDayIndex}
-        onHoverIndex={setHoveredDayIndex}
+        onHoverIndex={handleHoverIndex}
       />
     </div>
   );
@@ -243,6 +250,33 @@ const MOOD_LINE_COLOR = '#00DD66';
 const ENERGY_LINE_COLOR = '#FFCC44';
 const WELLNESS_LINE_COLOR = '#FFFFFF';
 
+/** Left-edge percent for the crosshair overlay, centered on column
+ *  `i` of `dayCount` columns. Mirrors the per-strip xFor math so the
+ *  crosshair lines up with dots / bar centers exactly. */
+function crosshairLeftPct(i: number, dayCount: number): number {
+  const colVbox = (VBOX_W - 2 * PAD_X) / dayCount;
+  const centerVbox = PAD_X + colVbox * (i + 0.5);
+  return (centerVbox / VBOX_W) * 100;
+}
+
+interface CrosshairOverlayProps {
+  hoveredDayIndex: number | null;
+  dayCount: number;
+}
+function CrosshairOverlay({ hoveredDayIndex, dayCount }: CrosshairOverlayProps) {
+  if (hoveredDayIndex == null || hoveredDayIndex < 0 || hoveredDayIndex >= dayCount) {
+    return null;
+  }
+  const leftPct = crosshairLeftPct(hoveredDayIndex, dayCount);
+  return (
+    <div
+      className="chart-crosshair-line"
+      style={{ left: `${leftPct}%` }}
+      aria-hidden="true"
+    />
+  );
+}
+
 /** Color a continuous mood score 1..5 using the iPhone mood palette.
  *  Round to the nearest integer position to pick a single color
  *  (1=upset, 2=anxious, 3=sad, 4=neutral, 5=happy). */
@@ -276,71 +310,234 @@ function MoodEnergyStrip({
     return PAD_TOP + (1 - t) * plotH;
   }
 
-  // Walk each day once and build mood + energy series in parallel.
+  // Walk each day once and build mood + energy + wellness series in
+  // parallel. Memoized on (days, rowsByDate) so that hover-induced
+  // re-renders don't rebuild ~5,000 segment / point objects.
   // Segments only bridge consecutive days that both have a value for
   // the given metric, so missing days read as missing.
   type Segment = { x1: number; y1: number; x2: number; y2: number };
   type Point = { i: number; level: number; x: number; y: number };
 
-  const energySegments: Segment[] = [];
-  const energyPoints: Point[] = [];
-  let prevEnergy: { i: number; y: number } | null = null;
+  const {
+    energySegments, energyPoints,
+    moodSegments, moodPoints,
+    wellnessSegments, wellnessPoints,
+  } = useMemo(() => {
+    const energySegments: Segment[] = [];
+    const energyPoints: Point[] = [];
+    let prevEnergy: { i: number; y: number } | null = null;
 
-  const moodSegments: Segment[] = [];
-  const moodPoints: Point[] = [];
-  let prevMood: { i: number; y: number } | null = null;
+    const moodSegments: Segment[] = [];
+    const moodPoints: Point[] = [];
+    let prevMood: { i: number; y: number } | null = null;
 
-  const wellnessSegments: Segment[] = [];
-  const wellnessPoints: Point[] = [];
-  let prevWellness: { i: number; y: number } | null = null;
+    const wellnessSegments: Segment[] = [];
+    const wellnessPoints: Point[] = [];
+    let prevWellness: { i: number; y: number } | null = null;
 
-  days.forEach((d, i) => {
-    const row = rowsByDate.get(dateKey(d));
+    days.forEach((d, i) => {
+      const row = rowsByDate.get(dateKey(d));
 
-    // -- Energy
-    const energyLevel = row?.energy ?? null;
-    if (energyLevel != null && energyLevel >= 1 && energyLevel <= 5) {
-      const x = xFor(i);
-      const y = yFor(energyLevel);
-      energyPoints.push({ i, level: energyLevel, x, y });
-      if (prevEnergy) {
-        energySegments.push({ x1: xFor(prevEnergy.i), y1: prevEnergy.y, x2: x, y2: y });
+      const energyLevel = row?.energy ?? null;
+      if (energyLevel != null && energyLevel >= 1 && energyLevel <= 5) {
+        const x = xFor(i);
+        const y = yFor(energyLevel);
+        energyPoints.push({ i, level: energyLevel, x, y });
+        if (prevEnergy) {
+          energySegments.push({ x1: xFor(prevEnergy.i), y1: prevEnergy.y, x2: x, y2: y });
+        }
+        prevEnergy = { i, y };
+      } else {
+        prevEnergy = null;
       }
-      prevEnergy = { i, y };
-    } else {
-      prevEnergy = null;
-    }
 
-    // -- Mood (derived score from moodValues or legacy mood string)
-    const moodScore = row ? computeDailyMood({ mood: row.mood, moodValues: row.moodValues }) : null;
-    if (moodScore != null) {
-      const x = xFor(i);
-      const y = yFor(moodScore);
-      moodPoints.push({ i, level: moodScore, x, y });
-      if (prevMood) {
-        moodSegments.push({ x1: xFor(prevMood.i), y1: prevMood.y, x2: x, y2: y });
+      const moodScore = row ? computeDailyMood({ mood: row.mood, moodValues: row.moodValues }) : null;
+      if (moodScore != null) {
+        const x = xFor(i);
+        const y = yFor(moodScore);
+        moodPoints.push({ i, level: moodScore, x, y });
+        if (prevMood) {
+          moodSegments.push({ x1: xFor(prevMood.i), y1: prevMood.y, x2: x, y2: y });
+        }
+        prevMood = { i, y };
+      } else {
+        prevMood = null;
       }
-      prevMood = { i, y };
-    } else {
-      prevMood = null;
-    }
 
-    // -- Wellness (1-5 integer)
-    const wellnessLevel = row?.wellnessLevel ?? null;
-    if (wellnessLevel != null && wellnessLevel >= 1 && wellnessLevel <= 5) {
-      const x = xFor(i);
-      const y = yFor(wellnessLevel);
-      wellnessPoints.push({ i, level: wellnessLevel, x, y });
-      if (prevWellness) {
-        wellnessSegments.push({ x1: xFor(prevWellness.i), y1: prevWellness.y, x2: x, y2: y });
+      const wellnessLevel = row?.wellnessLevel ?? null;
+      if (wellnessLevel != null && wellnessLevel >= 1 && wellnessLevel <= 5) {
+        const x = xFor(i);
+        const y = yFor(wellnessLevel);
+        wellnessPoints.push({ i, level: wellnessLevel, x, y });
+        if (prevWellness) {
+          wellnessSegments.push({ x1: xFor(prevWellness.i), y1: prevWellness.y, x2: x, y2: y });
+        }
+        prevWellness = { i, y };
+      } else {
+        prevWellness = null;
       }
-      prevWellness = { i, y };
-    } else {
-      prevWellness = null;
-    }
-  });
+    });
 
-  const todayMs = startOfLocalDay(new Date()).getTime();
+    return {
+      energySegments, energyPoints,
+      moodSegments, moodPoints,
+      wellnessSegments, wellnessPoints,
+    };
+    // xFor/yFor/colW/plotH are derived from days.length, so days is
+    // a sufficient dep for those.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, rowsByDate]);
+
+  const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
+
+  // The heavy SVG body — memoized so hover-induced strip re-renders
+  // get back the same React element reference and React's reconciler
+  // bails out without diffing the 5,000+ children.
+  const svgEl = useMemo(() => (
+    <svg
+      className="chart-svg"
+      viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Mood, energy and wellness"
+    >
+      {/* Subtle horizontal gridlines at every integer energy level */}
+      {[1, 2, 3, 4, 5].map((lvl) => (
+        <line
+          key={lvl}
+          x1={PAD_X}
+          x2={VBOX_W - PAD_X}
+          y1={yFor(lvl)}
+          y2={yFor(lvl)}
+          className="chart-grid-line"
+        />
+      ))}
+
+      {/* Week-boundary verticals — every 7 days */}
+      {days.map((d, i) => (
+        d.getDay() === 0 && i !== 0 ? (
+          <line
+            key={`wk-${i}`}
+            x1={PAD_X + colW * i}
+            x2={PAD_X + colW * i}
+            y1={PAD_TOP}
+            y2={PAD_TOP + plotH}
+            className="chart-week-line"
+          />
+        ) : null
+      ))}
+
+      {/* Today marker */}
+      {(() => {
+        const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
+        if (todayIdx < 0) return null;
+        return (
+          <line
+            x1={xFor(todayIdx)}
+            x2={xFor(todayIdx)}
+            y1={PAD_TOP}
+            y2={PAD_TOP + plotH}
+            className="chart-today-line"
+          />
+        );
+      })()}
+
+      {/* Wellness paints first — white line, white dots so it
+          doesn't compete with mood-green. */}
+      {showWellness && wellnessSegments.map((s, i) => (
+        <line
+          key={`well-seg-${i}`}
+          x1={s.x1}
+          y1={s.y1}
+          x2={s.x2}
+          y2={s.y2}
+          className="chart-wellness-line"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {showWellness && wellnessPoints.map((p) => (
+        <circle
+          key={`well-pt-${p.i}`}
+          cx={p.x}
+          cy={p.y}
+          r={0.55}
+          fill={WELLNESS_LINE_COLOR}
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>
+            {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — wellness ${p.level}`}
+          </title>
+        </circle>
+      ))}
+
+      {/* Mood line next so energy paints on top. Line stays
+          green; dots use the iPhone mood palette per rounded
+          score (upset red ↦ happy green). */}
+      {showMood && moodSegments.map((s, i) => (
+        <line
+          key={`mood-seg-${i}`}
+          x1={s.x1}
+          y1={s.y1}
+          x2={s.x2}
+          y2={s.y2}
+          className="chart-mood-line"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {showMood && moodPoints.map((p) => (
+        <circle
+          key={`mood-pt-${p.i}`}
+          cx={p.x}
+          cy={p.y}
+          r={0.55}
+          fill={moodColorForScore(p.level)}
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>
+            {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — mood ${p.level.toFixed(1)}`}
+          </title>
+        </circle>
+      ))}
+
+      {/* Energy line + dots — yellow line, ENERGY_COLORS dots
+          (matches iPhone palette). Painted last so points sit on
+          top of overlapping mood segments. */}
+      {showEnergy && energySegments.map((s, i) => (
+        <line
+          key={`energy-seg-${i}`}
+          x1={s.x1}
+          y1={s.y1}
+          x2={s.x2}
+          y2={s.y2}
+          className="chart-energy-line"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      {showEnergy && energyPoints.map((p) => (
+        <circle
+          key={`energy-pt-${p.i}`}
+          cx={p.x}
+          cy={p.y}
+          r={0.55}
+          fill={ENERGY_COLORS[p.level - 1]}
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>
+            {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — energy ${p.level}`}
+          </title>
+        </circle>
+      ))}
+    </svg>
+    // colW, plotH, xFor, yFor are derived from `days`; deps below
+    // capture everything that actually affects the SVG output.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [
+    days, todayMs,
+    showMood, showEnergy, showWellness,
+    moodSegments, moodPoints,
+    energySegments, energyPoints,
+    wellnessSegments, wellnessPoints,
+  ]);
 
   return (
     <section className="chart-strip">
@@ -390,181 +587,51 @@ function MoodEnergyStrip({
         onMouseMove={(e) => onHoverIndex(dayIndexFromMouse(e, days.length))}
         onMouseLeave={() => onHoverIndex(null)}
       >
-        <svg
-          className="chart-svg"
-          viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Mood, energy and wellness for the last 24 weeks"
-        >
-          {/* Subtle horizontal gridlines at every integer energy level */}
-          {[1, 2, 3, 4, 5].map((lvl) => (
-            <line
-              key={lvl}
-              x1={PAD_X}
-              x2={VBOX_W - PAD_X}
-              y1={yFor(lvl)}
-              y2={yFor(lvl)}
-              className="chart-grid-line"
-            />
-          ))}
+      <div className="chart-svg-wrap">
+        {svgEl}
+        <CrosshairOverlay hoveredDayIndex={hoveredDayIndex} dayCount={days.length} />
+      </div>
 
-          {/* Week-boundary verticals — every 7 days */}
-          {days.map((d, i) => (
-            d.getDay() === 0 && i !== 0 ? (
-              <line
-                key={`wk-${i}`}
-                x1={PAD_X + colW * i}
-                x2={PAD_X + colW * i}
-                y1={PAD_TOP}
-                y2={PAD_TOP + plotH}
-                className="chart-week-line"
-              />
-            ) : null
-          ))}
-
-          {/* Today marker */}
-          {(() => {
-            const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
-            if (todayIdx < 0) return null;
-            return (
-              <line
-                x1={xFor(todayIdx)}
-                x2={xFor(todayIdx)}
-                y1={PAD_TOP}
-                y2={PAD_TOP + plotH}
-                className="chart-today-line"
-              />
-            );
-          })()}
-
-          {/* Crosshair — shared between strips so the user can line
-              up values across charts for the same day. */}
-          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
-            <line
-              x1={xFor(hoveredDayIndex)}
-              x2={xFor(hoveredDayIndex)}
-              y1={PAD_TOP}
-              y2={PAD_TOP + plotH}
-              className="chart-cursor-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-
-          {/* Wellness paints first — white line, white dots so it
-              doesn't compete with mood-green. */}
-          {showWellness && wellnessSegments.map((s, i) => (
-            <line
-              key={`well-seg-${i}`}
-              x1={s.x1}
-              y1={s.y1}
-              x2={s.x2}
-              y2={s.y2}
-              className="chart-wellness-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {showWellness && wellnessPoints.map((p) => (
-            <circle
-              key={`well-pt-${p.i}`}
-              cx={p.x}
-              cy={p.y}
-              r={0.55}
-              fill={WELLNESS_LINE_COLOR}
-              vectorEffect="non-scaling-stroke"
-            >
-              <title>
-                {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — wellness ${p.level}`}
-              </title>
-            </circle>
-          ))}
-
-          {/* Mood line next so energy paints on top. Line stays
-              green; dots use the iPhone mood palette per rounded
-              score (upset red ↦ happy green). */}
-          {showMood && moodSegments.map((s, i) => (
-            <line
-              key={`mood-seg-${i}`}
-              x1={s.x1}
-              y1={s.y1}
-              x2={s.x2}
-              y2={s.y2}
-              className="chart-mood-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {showMood && moodPoints.map((p) => (
-            <circle
-              key={`mood-pt-${p.i}`}
-              cx={p.x}
-              cy={p.y}
-              r={0.55}
-              fill={moodColorForScore(p.level)}
-              vectorEffect="non-scaling-stroke"
-            >
-              <title>
-                {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — mood ${p.level.toFixed(1)}`}
-              </title>
-            </circle>
-          ))}
-
-          {/* Energy line + dots — yellow line, ENERGY_COLORS dots
-              (matches iPhone palette). Painted last so points sit on
-              top of overlapping mood segments. */}
-          {showEnergy && energySegments.map((s, i) => (
-            <line
-              key={`energy-seg-${i}`}
-              x1={s.x1}
-              y1={s.y1}
-              x2={s.x2}
-              y2={s.y2}
-              className="chart-energy-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {showEnergy && energyPoints.map((p) => (
-            <circle
-              key={`energy-pt-${p.i}`}
-              cx={p.x}
-              cy={p.y}
-              r={0.55}
-              fill={ENERGY_COLORS[p.level - 1]}
-              vectorEffect="non-scaling-stroke"
-            >
-              <title>
-                {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — energy ${p.level}`}
-              </title>
-            </circle>
-          ))}
-        </svg>
-
-        {/* Day-of-week strip beneath the chart. Show date numbers on
-            the 1st of each month so the calendar reads. */}
-        <div className="chart-day-row" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
-          {days.map((d, i) => {
-            const isFirstOfMonth = d.getDate() === 1;
-            const isToday = startOfLocalDay(d).getTime() === todayMs;
-            return (
-              <div
-                key={i}
-                className={`chart-day-cell${isToday ? ' today' : ''}`}
-                title={d.toLocaleDateString(undefined, {
-                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                })}
-              >
-                {isFirstOfMonth && (
-                  <div className="chart-day-month">
-                    {d.toLocaleDateString(undefined, { month: 'short' })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <DayRow days={days} todayMs={todayMs} />
       </div>
     </section>
   );
 }
+
+interface DayRowProps {
+  days: Date[];
+  todayMs: number;
+}
+/** Calendar strip beneath each chart. Memoized so hover-induced
+ *  parent re-renders don't rebuild 364 day cells. */
+const DayRow = memo(function DayRow({ days, todayMs }: DayRowProps) {
+  return (
+    <div
+      className="chart-day-row"
+      style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
+    >
+      {days.map((d, i) => {
+        const isFirstOfMonth = d.getDate() === 1;
+        const isToday = startOfLocalDay(d).getTime() === todayMs;
+        return (
+          <div
+            key={i}
+            className={`chart-day-cell${isToday ? ' today' : ''}`}
+            title={d.toLocaleDateString(undefined, {
+              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            })}
+          >
+            {isFirstOfMonth && (
+              <div className="chart-day-month">
+                {d.toLocaleDateString(undefined, { month: 'short' })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+});
 
 
 // ---- Sleep strip -----------------------------------------------------------
@@ -603,28 +670,96 @@ function SleepStrip({
     return plotH * (clamped / SLEEP_Y_MAX);
   }
 
-  const bars = days.map((d, i) => {
-    const row = rowsByDate.get(dateKey(d));
-    if (!row) return null;
-    const hours = dailySleepHours(row);
-    if (hours == null) return null;
-    const quality = row.sleepQuality;
-    const color = quality != null && quality >= 1 && quality <= 5
-      ? RATING_COLORS[quality - 1]
-      : '#6B7280';
-    return {
-      i,
-      x: xFor(i) + BAR_GAP / 2,
-      y: yForHours(hours),
-      width: colW - BAR_GAP,
-      height: heightForHours(hours),
-      color,
-      hours,
-      quality,
-    };
-  }).filter((b): b is NonNullable<typeof b> => b !== null);
+  const bars = useMemo(() => {
+    return days.map((d, i) => {
+      const row = rowsByDate.get(dateKey(d));
+      if (!row) return null;
+      const hours = dailySleepHours(row);
+      if (hours == null) return null;
+      const quality = row.sleepQuality;
+      const color = quality != null && quality >= 1 && quality <= 5
+        ? RATING_COLORS[quality - 1]
+        : '#6B7280';
+      return {
+        i,
+        x: xFor(i) + BAR_GAP / 2,
+        y: yForHours(hours),
+        width: colW - BAR_GAP,
+        height: heightForHours(hours),
+        color,
+        hours,
+        quality,
+      };
+    }).filter((b): b is NonNullable<typeof b> => b !== null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, rowsByDate]);
 
-  const todayMs = startOfLocalDay(new Date()).getTime();
+  const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
+
+  const svgEl = useMemo(() => (
+    <svg
+      className="chart-svg"
+      viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Sleep duration per day, bars colored by quality"
+    >
+      {[4, 6, 8].map((h) => (
+        <line
+          key={h}
+          x1={PAD_X}
+          x2={VBOX_W - PAD_X}
+          y1={yForHours(h)}
+          y2={yForHours(h)}
+          className="chart-grid-line"
+        />
+      ))}
+
+      {days.map((d, i) => (
+        d.getDay() === 0 && i !== 0 ? (
+          <line
+            key={`wk-${i}`}
+            x1={PAD_X + colW * i}
+            x2={PAD_X + colW * i}
+            y1={PAD_TOP}
+            y2={PAD_TOP + plotH}
+            className="chart-week-line"
+          />
+        ) : null
+      ))}
+
+      {(() => {
+        const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
+        if (todayIdx < 0) return null;
+        return (
+          <line
+            x1={xFor(todayIdx) + colW / 2}
+            x2={xFor(todayIdx) + colW / 2}
+            y1={PAD_TOP}
+            y2={PAD_TOP + plotH}
+            className="chart-today-line"
+          />
+        );
+      })()}
+
+      {bars.map((b) => (
+        <rect
+          key={`sleep-${b.i}`}
+          x={b.x}
+          y={b.y}
+          width={b.width}
+          height={b.height}
+          fill={b.color}
+          rx={0.1}
+        >
+          <title>
+            {`${days[b.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
+          </title>
+        </rect>
+      ))}
+    </svg>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [days, todayMs, bars]);
 
   return (
     <section className="chart-strip">
@@ -650,104 +785,12 @@ function SleepStrip({
         onMouseMove={(e) => onHoverIndex(dayIndexFromMouse(e, days.length))}
         onMouseLeave={() => onHoverIndex(null)}
       >
-        <svg
-          className="chart-svg"
-          viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Sleep duration per day, bars colored by quality"
-        >
-          {[4, 6, 8].map((h) => (
-            <line
-              key={h}
-              x1={PAD_X}
-              x2={VBOX_W - PAD_X}
-              y1={yForHours(h)}
-              y2={yForHours(h)}
-              className="chart-grid-line"
-            />
-          ))}
+      <div className="chart-svg-wrap">
+        {svgEl}
+        <CrosshairOverlay hoveredDayIndex={hoveredDayIndex} dayCount={days.length} />
+      </div>
 
-          {days.map((d, i) => (
-            d.getDay() === 0 && i !== 0 ? (
-              <line
-                key={`wk-${i}`}
-                x1={PAD_X + colW * i}
-                x2={PAD_X + colW * i}
-                y1={PAD_TOP}
-                y2={PAD_TOP + plotH}
-                className="chart-week-line"
-              />
-            ) : null
-          ))}
-
-          {(() => {
-            const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
-            if (todayIdx < 0) return null;
-            return (
-              <line
-                x1={xFor(todayIdx) + colW / 2}
-                x2={xFor(todayIdx) + colW / 2}
-                y1={PAD_TOP}
-                y2={PAD_TOP + plotH}
-                className="chart-today-line"
-              />
-            );
-          })()}
-
-          {/* Shared crosshair — `xFor` in this strip returns the
-              column's left edge, so add half-col to center on the
-              same day as the MoodEnergy strip's dot. */}
-          {bars.map((b) => (
-            <rect
-              key={`sleep-${b.i}`}
-              x={b.x}
-              y={b.y}
-              width={b.width}
-              height={b.height}
-              fill={b.color}
-              rx={0.1}
-            >
-              <title>
-                {`${days[b.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
-              </title>
-            </rect>
-          ))}
-
-          {/* Crosshair last so it paints over the bars. */}
-          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
-            <line
-              x1={xFor(hoveredDayIndex) + colW / 2}
-              x2={xFor(hoveredDayIndex) + colW / 2}
-              y1={PAD_TOP}
-              y2={PAD_TOP + plotH}
-              className="chart-cursor-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </svg>
-
-        <div className="chart-day-row" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
-          {days.map((d, i) => {
-            const isFirstOfMonth = d.getDate() === 1;
-            const isToday = startOfLocalDay(d).getTime() === todayMs;
-            return (
-              <div
-                key={i}
-                className={`chart-day-cell${isToday ? ' today' : ''}`}
-                title={d.toLocaleDateString(undefined, {
-                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                })}
-              >
-                {isFirstOfMonth && (
-                  <div className="chart-day-month">
-                    {d.toLocaleDateString(undefined, { month: 'short' })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <DayRow days={days} todayMs={todayMs} />
       </div>
     </section>
   );
@@ -821,38 +864,109 @@ function ActivityStrip({
   // Pre-compute stack segments per day. Each segment is one type
   // sitting on top of the running total. We clamp the running total
   // at ACTIVITY_Y_MAX so overflow days (>24h logged) don't escape.
-  const segmentsByDay = days.map((d, i) => {
-    const totals = activityTotals.get(dateKey(d));
-    if (!totals) return null;
-    const stack: {
-      type: string;
-      hours: number;
-      y: number;
-      h: number;
-      color: string;
-    }[] = [];
-    let runningHours = 0;
-    for (const type of visibleTypes) {
-      const hours = totals.byType.get(type) ?? 0;
-      if (hours <= 0) continue;
-      const baseHours = runningHours;
-      runningHours = Math.min(ACTIVITY_Y_MAX, runningHours + hours);
-      const segTop = yForHours(runningHours);
-      const segBottom = yForHours(baseHours);
-      stack.push({
-        type,
-        hours,
-        y: segTop,
-        h: segBottom - segTop,
-        color: ACTIVITY_COLORS[type] ?? ACTIVITY_COLORS.other ?? '#767676',
-      });
-      if (runningHours >= ACTIVITY_Y_MAX) break;
-    }
-    if (stack.length === 0) return null;
-    return { i, x: xFor(i) + BAR_GAP / 2, width: colW - BAR_GAP, segments: stack, total: runningHours };
-  }).filter((d): d is NonNullable<typeof d> => d !== null);
+  // Memoized so hover updates don't rebuild ~1,800 bar segments.
+  const segmentsByDay = useMemo(() => {
+    return days.map((d, i) => {
+      const totals = activityTotals.get(dateKey(d));
+      if (!totals) return null;
+      const stack: {
+        type: string;
+        hours: number;
+        y: number;
+        h: number;
+        color: string;
+      }[] = [];
+      let runningHours = 0;
+      for (const type of visibleTypes) {
+        const hours = totals.byType.get(type) ?? 0;
+        if (hours <= 0) continue;
+        const baseHours = runningHours;
+        runningHours = Math.min(ACTIVITY_Y_MAX, runningHours + hours);
+        const segTop = yForHours(runningHours);
+        const segBottom = yForHours(baseHours);
+        stack.push({
+          type,
+          hours,
+          y: segTop,
+          h: segBottom - segTop,
+          color: ACTIVITY_COLORS[type] ?? ACTIVITY_COLORS.other ?? '#767676',
+        });
+        if (runningHours >= ACTIVITY_Y_MAX) break;
+      }
+      if (stack.length === 0) return null;
+      return { i, x: xFor(i) + BAR_GAP / 2, width: colW - BAR_GAP, segments: stack, total: runningHours };
+    }).filter((d): d is NonNullable<typeof d> => d !== null);
+    // hidden is captured via visibleTypes; deps below cover it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, activityTotals, hidden]);
 
-  const todayMs = startOfLocalDay(new Date()).getTime();
+  const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
+
+  const svgEl = useMemo(() => (
+    <svg
+      className="chart-svg"
+      viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Activity mix per day, stacked by type"
+    >
+      {[6, 12, 18, 24].map((h) => (
+        <line
+          key={h}
+          x1={PAD_X}
+          x2={VBOX_W - PAD_X}
+          y1={yForHours(h)}
+          y2={yForHours(h)}
+          className="chart-grid-line"
+        />
+      ))}
+
+      {days.map((d, i) => (
+        d.getDay() === 0 && i !== 0 ? (
+          <line
+            key={`wk-${i}`}
+            x1={PAD_X + colW * i}
+            x2={PAD_X + colW * i}
+            y1={PAD_TOP}
+            y2={PAD_TOP + plotH}
+            className="chart-week-line"
+          />
+        ) : null
+      ))}
+
+      {(() => {
+        const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
+        if (todayIdx < 0) return null;
+        return (
+          <line
+            x1={xFor(todayIdx) + colW / 2}
+            x2={xFor(todayIdx) + colW / 2}
+            y1={PAD_TOP}
+            y2={PAD_TOP + plotH}
+            className="chart-today-line"
+          />
+        );
+      })()}
+
+      {segmentsByDay.map((day) => (
+        day.segments.map((seg, j) => (
+          <rect
+            key={`act-${day.i}-${j}`}
+            x={day.x}
+            y={seg.y}
+            width={day.width}
+            height={seg.h}
+            fill={seg.color}
+          >
+            <title>
+              {`${days[day.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${ACTIVITY_TYPE_LABELS[seg.type] ?? seg.type}: ${seg.hours.toFixed(1)}h`}
+            </title>
+          </rect>
+        ))
+      ))}
+    </svg>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [days, todayMs, segmentsByDay]);
 
   const toggleType = (t: string) => {
     setHidden((prev) => {
@@ -894,108 +1008,12 @@ function ActivityStrip({
         onMouseMove={(e) => onHoverIndex(dayIndexFromMouse(e, days.length))}
         onMouseLeave={() => onHoverIndex(null)}
       >
-        <svg
-          className="chart-svg"
-          viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Activity mix per day, stacked by type"
-        >
-          {/* Gridlines every 6 hours */}
-          {[6, 12, 18, 24].map((h) => (
-            <line
-              key={h}
-              x1={PAD_X}
-              x2={VBOX_W - PAD_X}
-              y1={yForHours(h)}
-              y2={yForHours(h)}
-              className="chart-grid-line"
-            />
-          ))}
+      <div className="chart-svg-wrap">
+        {svgEl}
+        <CrosshairOverlay hoveredDayIndex={hoveredDayIndex} dayCount={days.length} />
+      </div>
 
-          {/* Week-boundary verticals */}
-          {days.map((d, i) => (
-            d.getDay() === 0 && i !== 0 ? (
-              <line
-                key={`wk-${i}`}
-                x1={PAD_X + colW * i}
-                x2={PAD_X + colW * i}
-                y1={PAD_TOP}
-                y2={PAD_TOP + plotH}
-                className="chart-week-line"
-              />
-            ) : null
-          ))}
-
-          {/* Today line */}
-          {(() => {
-            const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
-            if (todayIdx < 0) return null;
-            return (
-              <line
-                x1={xFor(todayIdx) + colW / 2}
-                x2={xFor(todayIdx) + colW / 2}
-                y1={PAD_TOP}
-                y2={PAD_TOP + plotH}
-                className="chart-today-line"
-              />
-            );
-          })()}
-
-          {/* Stacked bars — painted before the crosshair so the
-              vertical guideline sits on top of the bars and stays
-              visible. */}
-          {segmentsByDay.map((day) => (
-            day.segments.map((seg, j) => (
-              <rect
-                key={`act-${day.i}-${j}`}
-                x={day.x}
-                y={seg.y}
-                width={day.width}
-                height={seg.h}
-                fill={seg.color}
-              >
-                <title>
-                  {`${days[day.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${ACTIVITY_TYPE_LABELS[seg.type] ?? seg.type}: ${seg.hours.toFixed(1)}h`}
-                </title>
-              </rect>
-            ))
-          ))}
-
-          {/* Shared crosshair — last so it paints on top of the bars */}
-          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
-            <line
-              x1={xFor(hoveredDayIndex) + colW / 2}
-              x2={xFor(hoveredDayIndex) + colW / 2}
-              y1={PAD_TOP}
-              y2={PAD_TOP + plotH}
-              className="chart-cursor-line"
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </svg>
-
-        <div className="chart-day-row" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
-          {days.map((d, i) => {
-            const isFirstOfMonth = d.getDate() === 1;
-            const isToday = startOfLocalDay(d).getTime() === todayMs;
-            return (
-              <div
-                key={i}
-                className={`chart-day-cell${isToday ? ' today' : ''}`}
-                title={d.toLocaleDateString(undefined, {
-                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                })}
-              >
-                {isFirstOfMonth && (
-                  <div className="chart-day-month">
-                    {d.toLocaleDateString(undefined, { month: 'short' })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <DayRow days={days} todayMs={todayMs} />
       </div>
     </section>
   );
