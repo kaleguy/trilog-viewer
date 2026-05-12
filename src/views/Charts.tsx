@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
+import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
+import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
 interface Props {
@@ -98,21 +99,32 @@ export function Charts({ conn }: Props) {
   }, [endDate]);
 
   const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
+  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
 
   const startDateKey = dateKey(days[0]);
   const endDateKey = dateKey(days[days.length - 1]);
+  const startMs = days[0].getTime();
+  const endMs = days[days.length - 1].getTime() + 24 * 60 * 60 * 1000;
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
   useEffect(() => {
     let cancelled = false;
-    getDayEntriesRange(conn, startDateKey, endDateKey)
-      .then((rows) => {
+    Promise.all([
+      getDayEntriesRange(conn, startDateKey, endDateKey),
+      // Pad activity fetch by ±1 day so cross-midnight entries on the
+      // edges of the window credit the correct cells.
+      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
+    ])
+      .then(([rows, activities]) => {
         if (cancelled) return;
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
         setRowsByDate(m);
+        setActivityTotals(aggregateActivities(activities));
       })
       .catch(() => { /* fall back to empty */ });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
 
   const stepBack = () => {
@@ -141,6 +153,15 @@ export function Charts({ conn }: Props) {
       <SleepStrip
         days={days}
         rowsByDate={rowsByDate}
+        endDate={endDate}
+        onBack={stepBack}
+        onForward={stepForward}
+        hoveredDayIndex={hoveredDayIndex}
+        onHoverIndex={setHoveredDayIndex}
+      />
+      <ActivityStrip
+        days={days}
+        activityTotals={activityTotals}
         endDate={endDate}
         onBack={stepBack}
         onForward={stepForward}
@@ -679,6 +700,252 @@ function SleepStrip({
                 {`${days[b.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
               </title>
             </rect>
+          ))}
+        </svg>
+
+        <div className="chart-day-row">
+          {days.map((d, i) => {
+            const isFirstOfMonth = d.getDate() === 1;
+            const isToday = startOfLocalDay(d).getTime() === todayMs;
+            return (
+              <div
+                key={i}
+                className={`chart-day-cell${isToday ? ' today' : ''}`}
+                title={d.toLocaleDateString(undefined, {
+                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                })}
+              >
+                {isFirstOfMonth && (
+                  <div className="chart-day-month">
+                    {d.toLocaleDateString(undefined, { month: 'short' })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---- Activity-mix stacked-bar strip --------------------------------------
+
+interface ActivityStripProps {
+  days: Date[];
+  activityTotals: Map<string, ActivityTotals>;
+  endDate: Date;
+  onBack: () => void;
+  onForward: () => void;
+  hoveredDayIndex: number | null;
+  onHoverIndex: (i: number | null) => void;
+}
+
+// Stacking order, bottom→top. Sleep anchors the base (biggest most
+// days), then waking activities, with `other` floating at top as a
+// catch-all. Order chosen to roughly match the iPhone's add-entry
+// dialog so users see a familiar layout.
+const ACTIVITY_STACK_ORDER = [
+  'sleep',
+  'morning routine',
+  'transit',
+  'work',
+  'school',
+  'exercise',
+  'leisure',
+  'socialize',
+  'recovery',
+  'other',
+] as const;
+
+const ACTIVITY_TYPE_LABELS: Record<string, string> = {
+  'morning routine': 'Morning',
+  sleep: 'Sleep',
+  work: 'Work',
+  school: 'School',
+  exercise: 'Exercise',
+  leisure: 'Leisure',
+  socialize: 'Social',
+  transit: 'Transit',
+  recovery: 'Recovery',
+  other: 'Other',
+};
+
+const ACTIVITY_Y_MAX = 24; // hours
+
+function ActivityStrip({
+  days, activityTotals, endDate, onBack, onForward, hoveredDayIndex, onHoverIndex,
+}: ActivityStripProps) {
+  // Per-type toggles. Default everything on; clicking a legend chip
+  // hides that activity's segments across all days. Hidden segments
+  // collapse the stack rather than leaving gaps — we just don't draw
+  // them and let segments above settle down.
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  const visibleTypes = ACTIVITY_STACK_ORDER.filter((t) => !hidden.has(t));
+
+  const colW = (VBOX_W - 2 * PAD_X) / days.length;
+  const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
+  const BAR_GAP = 0.15;
+
+  function xFor(i: number): number { return PAD_X + colW * i; }
+  function yForHours(h: number): number {
+    const clamped = Math.min(h, ACTIVITY_Y_MAX);
+    return PAD_TOP + plotH * (1 - clamped / ACTIVITY_Y_MAX);
+  }
+
+  // Pre-compute stack segments per day. Each segment is one type
+  // sitting on top of the running total. We clamp the running total
+  // at ACTIVITY_Y_MAX so overflow days (>24h logged) don't escape.
+  const segmentsByDay = days.map((d, i) => {
+    const totals = activityTotals.get(dateKey(d));
+    if (!totals) return null;
+    const stack: {
+      type: string;
+      hours: number;
+      y: number;
+      h: number;
+      color: string;
+    }[] = [];
+    let runningHours = 0;
+    for (const type of visibleTypes) {
+      const hours = totals.byType.get(type) ?? 0;
+      if (hours <= 0) continue;
+      const baseHours = runningHours;
+      runningHours = Math.min(ACTIVITY_Y_MAX, runningHours + hours);
+      const segTop = yForHours(runningHours);
+      const segBottom = yForHours(baseHours);
+      stack.push({
+        type,
+        hours,
+        y: segTop,
+        h: segBottom - segTop,
+        color: ACTIVITY_COLORS[type] ?? ACTIVITY_COLORS.other ?? '#767676',
+      });
+      if (runningHours >= ACTIVITY_Y_MAX) break;
+    }
+    if (stack.length === 0) return null;
+    return { i, x: xFor(i) + BAR_GAP / 2, width: colW - BAR_GAP, segments: stack, total: runningHours };
+  }).filter((d): d is NonNullable<typeof d> => d !== null);
+
+  const todayMs = startOfLocalDay(new Date()).getTime();
+
+  const toggleType = (t: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  };
+
+  return (
+    <section className="chart-strip">
+      <header className="chart-strip-head">
+        <h3 className="chart-strip-title">Activity Mix</h3>
+        <div className="chart-strip-legend">
+          {ACTIVITY_STACK_ORDER.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`chart-legend-item${hidden.has(t) ? ' off' : ''}`}
+              aria-pressed={!hidden.has(t)}
+              onClick={() => toggleType(t)}
+              title={hidden.has(t) ? `Show ${t}` : `Hide ${t}`}
+            >
+              <span className="chart-legend-dot" style={{ background: ACTIVITY_COLORS[t] ?? '#767676' }} />
+              {ACTIVITY_TYPE_LABELS[t] ?? t}
+            </button>
+          ))}
+        </div>
+        <div className="chart-strip-nav">
+          <button type="button" onClick={onBack} aria-label="Previous week">‹</button>
+          <span className="chart-strip-range">Week {isoWeekNumber(endDate)}</span>
+          <button type="button" onClick={onForward} aria-label="Next week">›</button>
+        </div>
+      </header>
+
+      <div
+        className="chart-strip-body"
+        onMouseMove={(e) => onHoverIndex(dayIndexFromMouse(e, days.length))}
+        onMouseLeave={() => onHoverIndex(null)}
+      >
+        <svg
+          className="chart-svg"
+          viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Activity mix per day, stacked by type"
+        >
+          {/* Gridlines every 6 hours */}
+          {[6, 12, 18, 24].map((h) => (
+            <line
+              key={h}
+              x1={PAD_X}
+              x2={VBOX_W - PAD_X}
+              y1={yForHours(h)}
+              y2={yForHours(h)}
+              className="chart-grid-line"
+            />
+          ))}
+
+          {/* Week-boundary verticals */}
+          {days.map((d, i) => (
+            d.getDay() === 0 && i !== 0 ? (
+              <line
+                key={`wk-${i}`}
+                x1={PAD_X + colW * i}
+                x2={PAD_X + colW * i}
+                y1={PAD_TOP}
+                y2={PAD_TOP + plotH}
+                className="chart-week-line"
+              />
+            ) : null
+          ))}
+
+          {/* Today line */}
+          {(() => {
+            const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
+            if (todayIdx < 0) return null;
+            return (
+              <line
+                x1={xFor(todayIdx) + colW / 2}
+                x2={xFor(todayIdx) + colW / 2}
+                y1={PAD_TOP}
+                y2={PAD_TOP + plotH}
+                className="chart-today-line"
+              />
+            );
+          })()}
+
+          {/* Shared crosshair */}
+          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
+            <line
+              x1={xFor(hoveredDayIndex) + colW / 2}
+              x2={xFor(hoveredDayIndex) + colW / 2}
+              y1={PAD_TOP}
+              y2={PAD_TOP + plotH}
+              className="chart-cursor-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {/* Stacked bars */}
+          {segmentsByDay.map((day) => (
+            day.segments.map((seg, j) => (
+              <rect
+                key={`act-${day.i}-${j}`}
+                x={day.x}
+                y={seg.y}
+                width={day.width}
+                height={seg.h}
+                fill={seg.color}
+              >
+                <title>
+                  {`${days[day.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${ACTIVITY_TYPE_LABELS[seg.type] ?? seg.type}: ${seg.hours.toFixed(1)}h`}
+                </title>
+              </rect>
+            ))
           ))}
         </svg>
 
