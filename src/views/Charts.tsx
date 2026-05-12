@@ -164,13 +164,19 @@ export function Charts({ conn }: Props) {
       return;
     }
     let cancelled = false;
-    Promise.all([
-      getDayEntriesRange(conn, startDateKey, endDateKey),
-      // Pad activity fetch by ±1 day so cross-midnight entries on the
-      // edges of the window credit the correct cells.
-      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
-    ])
-      .then(([rows, activities]) => {
+    // Serialize the two SQL invokes (not Promise.all). Parallel
+    // invokes appear to contribute to tauri-plugin-sql's IPC
+    // instability — running them in sequence with a brief breather
+    // between has been much more reliable across many navigation
+    // clicks.
+    (async () => {
+      try {
+        const rows = await getDayEntriesRange(conn, startDateKey, endDateKey);
+        if (cancelled) return;
+        await new Promise((r) => setTimeout(r, 50));
+        // Pad activity fetch by ±1 day so cross-midnight entries on
+        // the edges of the window credit the correct cells.
+        const activities = await getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY);
         if (cancelled) return;
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
@@ -178,8 +184,10 @@ export function Charts({ conn }: Props) {
         chartsCache.set(key, { rowsByDate: m, activityTotals: totals });
         setRowsByDate(m);
         setActivityTotals(totals);
-      })
-      .catch(() => { /* fall back to empty */ });
+      } catch {
+        /* fall back to empty */
+      }
+    })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);

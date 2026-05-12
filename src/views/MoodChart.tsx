@@ -206,19 +206,32 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
     // phase that started before the visible range still paints its tail.
     const padMs = 2 * MS_PER_DAY;
     const cycleLookbackMs = CYCLE_LOOKBACK_DAYS * MS_PER_DAY;
-    Promise.all([
-      getMoodEntries(conn, startMs, endMs),
-      getEnergyEntries(conn, startMs, endMs),
-      getActivityEntries(conn, startMs - padMs, endMs + padMs),
-      getNoteEntries(conn, startMs, endMs),
-      getCycleNotes(conn, startMs - cycleLookbackMs, endMs),
-      getHistoricalWeatherRange(
-        conn,
-        dateKey(new Date(startMs)),
-        dateKey(new Date(endMs - 1))
-      ),
-    ])
-      .then(([m, e, a, n, c, w]) => {
+    // Serialize the six invokes. Running them in parallel via
+    // Promise.all was contributing to tauri-plugin-sql IPC deadlocks
+    // after a few rounds of date navigation.
+    (async () => {
+      const breather = () => new Promise((r) => setTimeout(r, 30));
+      try {
+        const m = await getMoodEntries(conn, startMs, endMs);
+        if (cancelled) return;
+        await breather();
+        const e = await getEnergyEntries(conn, startMs, endMs);
+        if (cancelled) return;
+        await breather();
+        const a = await getActivityEntries(conn, startMs - padMs, endMs + padMs);
+        if (cancelled) return;
+        await breather();
+        const n = await getNoteEntries(conn, startMs, endMs);
+        if (cancelled) return;
+        await breather();
+        const c = await getCycleNotes(conn, startMs - cycleLookbackMs, endMs);
+        if (cancelled) return;
+        await breather();
+        const w = await getHistoricalWeatherRange(
+          conn,
+          dateKey(new Date(startMs)),
+          dateKey(new Date(endMs - 1))
+        );
         if (cancelled) return;
         setMoods(m);
         setEnergies(e);
@@ -226,11 +239,12 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
         setNotes(n);
         setCycles(c);
         setWeather(w);
-      })
-      .catch((err) => console.error('[MoodChart] query failed', err))
-      .finally(() => {
+      } catch (err) {
+        console.error('[MoodChart] query failed', err);
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => { cancelled = true; };
   }, [conn, startMs, endMs]);
 
