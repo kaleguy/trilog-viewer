@@ -6,6 +6,7 @@ import { MoodChart } from './views/MoodChart';
 import { Metrics } from './views/Metrics';
 import { Habits } from './views/Habits';
 import { Trackers } from './views/Trackers';
+import { Placeholder } from './views/Placeholder';
 import { LifeCalendar } from './views/LifeCalendar';
 import { SettingsModal, type ViewerSettings } from './views/SettingsModal';
 import { AboutModal } from './views/AboutModal';
@@ -13,7 +14,7 @@ import { ErrorBoundary } from './views/ErrorBoundary';
 import { getAppSettings } from './db/queries';
 import './App.css';
 
-type Tab = 'mood' | 'metrics' | 'habits' | 'trackers' | 'life';
+type Tab = 'mood' | 'metrics' | 'habits' | 'trackers' | 'charts' | 'life';
 
 interface DbState {
   path: string;
@@ -26,6 +27,7 @@ const ALL_TABS: { id: Tab; label: string }[] = [
   { id: 'metrics', label: 'Metrics' },
   { id: 'habits', label: 'Habits' },
   { id: 'trackers', label: 'Trackers' },
+  { id: 'charts', label: 'Charts' },
   { id: 'life', label: 'Life' },
 ];
 
@@ -249,6 +251,7 @@ function App() {
           {activeTab === 'metrics' && <Metrics conn={db.conn} settings={db.settings} />}
           {activeTab === 'habits' && <Habits conn={db.conn} />}
           {activeTab === 'trackers' && <Trackers conn={db.conn} />}
+          {activeTab === 'charts' && <Placeholder title="Charts" />}
           {activeTab === 'life' && (
             <LifeCalendar
               birthdate={viewerSettings.birthdate}
