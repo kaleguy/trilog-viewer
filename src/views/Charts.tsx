@@ -134,16 +134,19 @@ export function Charts({ conn }: Props) {
     const tStart = performance.now();
     console.log(`[charts] effect fired window=${windowWeeks}w range=${startDateKey}..${endDateKey}`);
 
-    // Watchdog: every 500ms, if we're still in the loading sequence,
-    // update the toolbar with elapsed time. If JS is alive but stuck
-    // awaiting IPC, the user will see the counter tick. If the user
-    // sees nothing change, JS itself is blocked.
-    let watchdogPhase = '?';
+    // Confirm useEffect fired by setting perf synchronously, BEFORE
+    // any async work. If the toolbar updates to "EFFECT FIRED" but
+    // never ticks past, JS is blocked before our first interval.
+    setPerf(`${windowWeeks}w · EFFECT FIRED at t=0`);
+
+    let watchdogPhase = 'about-to-query';
+    let tickCount = 0;
     const watchdog = setInterval(() => {
       if (cancelled) return;
+      tickCount++;
       const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
-      setPerf(`${windowWeeks}w · ${watchdogPhase} · ${elapsed}s elapsed`);
-    }, 500);
+      setPerf(`${windowWeeks}w · tick#${tickCount} · ${watchdogPhase} · ${elapsed}s`);
+    }, 250);
 
     const runQuery = async () => {
       try {
