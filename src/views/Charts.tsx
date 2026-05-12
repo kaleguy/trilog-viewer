@@ -132,6 +132,7 @@ export function Charts({ conn }: Props) {
   useEffect(() => {
     let cancelled = false;
     const tStart = performance.now();
+    console.log(`[charts] effect fired window=${windowWeeks}w range=${startDateKey}..${endDateKey}`);
     setPerf(`${windowWeeks}w · fetching…`);
     const tQueryStart = performance.now();
     Promise.all([
@@ -143,17 +144,21 @@ export function Charts({ conn }: Props) {
       .then(([rows, activities]) => {
         if (cancelled) return;
         const tQueryEnd = performance.now();
+        console.log(`[charts] query done rows=${rows.length} activities=${activities.length} dur=${(tQueryEnd - tQueryStart).toFixed(0)}ms`);
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
         const tMapEnd = performance.now();
         const totals = aggregateActivities(activities);
         const tAggEnd = performance.now();
+        console.log(`[charts] aggregated dur=${(tAggEnd - tMapEnd).toFixed(0)}ms`);
         setRowsByDate(m);
         setActivityTotals(totals);
+        console.log(`[charts] state set, awaiting React commit`);
         // Defer the render-time measurement to the next frame so we
         // catch React commit + browser layout cost.
         requestAnimationFrame(() => {
           const tDone = performance.now();
+          console.log(`[charts] rendered, total=${(tDone - tStart).toFixed(0)}ms`);
           setPerf(
             `${windowWeeks}w · ` +
             `query ${(tQueryEnd - tQueryStart).toFixed(0)}ms · ` +
@@ -166,6 +171,7 @@ export function Charts({ conn }: Props) {
         });
       })
       .catch((err) => {
+        console.error('[charts] fetch error', err);
         setPerf(`${windowWeeks}w · error: ${String(err).slice(0, 80)}`);
       });
     return () => { cancelled = true; };
@@ -459,7 +465,7 @@ function MoodEnergyStrip({
       ))}
 
       {/* Week-boundary verticals — every 7 days */}
-      {days.map((d, i) => (
+      {days.length <= 200 && days.map((d, i) => (
         d.getDay() === 0 && i !== 0 ? (
           <line
             key={`wk-${i}`}
@@ -737,7 +743,7 @@ function SleepStrip({
         />
       ))}
 
-      {days.map((d, i) => (
+      {days.length <= 200 && days.map((d, i) => (
         d.getDay() === 0 && i !== 0 ? (
           <line
             key={`wk-${i}`}
@@ -960,7 +966,7 @@ function ActivityStrip({
         />
       ))}
 
-      {days.map((d, i) => (
+      {days.length <= 200 && days.map((d, i) => (
         d.getDay() === 0 && i !== 0 ? (
           <line
             key={`wk-${i}`}
