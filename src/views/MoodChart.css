@@ -460,6 +460,87 @@
   color: #aaa;
 }
 
+/* Tracker note body — richer than plain text. */
+.tracker-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tracker-popup-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f0f0f0;
+  letter-spacing: -0.01em;
+}
+
+.tracker-popup-meta {
+  font-size: 12px;
+  color: #888;
+  letter-spacing: 0.02em;
+}
+
+.tracker-popup-meta code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #ccc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.tracker-popup-value-row {
+  margin-top: 8px;
+}
+
+.tracker-popup-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0f0f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tracker-popup-toggle {
+  padding: 2px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+.tracker-popup-toggle.on {
+  background: rgba(0, 204, 85, 0.18);
+  color: #00cc55;
+}
+.tracker-popup-toggle.off {
+  background: rgba(255, 255, 255, 0.06);
+  color: #888;
+}
+
+.tracker-popup-logged {
+  font-size: 14px;
+  color: #aaa;
+  font-weight: 600;
+}
+
+.tracker-popup-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.tracker-popup-trailing {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  color: #d0d0d0;
+  line-height: 1.5;
+  font-style: italic;
+}
+
 .day-footer {
   height: 36px;
   display: flex;

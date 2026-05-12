@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Utensils, HeartPulse, Moon, FileText, BarChart3 } from 'lucide-react';
 import {
   getActivityEntries,
+  getCustomTrackingItems,
+  type CustomTrackingItem,
   getCycleNotes,
   getEnergyEntries,
   getHistoricalWeatherRange,
@@ -146,6 +148,19 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
   const [visibility, setVisibility] = useState<VisibilityState>('all');
   const [showNotes, setShowNotes] = useState(true);
   const [selectedNote, setSelectedNote] = useState<NoteEntry | null>(null);
+  const [trackerItems, setTrackerItems] = useState<CustomTrackingItem[]>([]);
+
+  // Custom tracker definitions don't change with the visible date
+  // window — pull them once and cache. The note popup uses them to
+  // enrich "t key value" notes with the tracker's label / type /
+  // category.
+  useEffect(() => {
+    let cancelled = false;
+    getCustomTrackingItems(conn)
+      .then((items) => { if (!cancelled) setTrackerItems(items); })
+      .catch(() => { /* table may not exist on older bundles */ });
+    return () => { cancelled = true; };
+  }, [conn]);
 
   // Close note popup on Escape.
   useEffect(() => {
@@ -325,7 +340,11 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
       {/* Note popup — click a marker in the chart to open. Click the
           backdrop, the close button, or press Esc to dismiss. */}
       {selectedNote && (
-        <NotePopup note={selectedNote} onClose={() => setSelectedNote(null)} />
+        <NotePopup
+          note={selectedNote}
+          trackerItems={trackerItems}
+          onClose={() => setSelectedNote(null)}
+        />
       )}
     </div>
   );
@@ -333,17 +352,84 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
 
 interface NotePopupProps {
   note: NoteEntry;
+  trackerItems: CustomTrackingItem[];
   onClose: () => void;
 }
 
-function NotePopup({ note, onClose }: NotePopupProps) {
+interface ParsedTrackerNote {
+  key: string;
+  value: number | null;
+  isNegative: boolean;
+  trailing: string;
+}
+
+/**
+ * Parse a "t key value …" or "track key value …" note. Returns null
+ * if the note doesn't look like a tracker entry. Mirrors the iPhone
+ * parser semantics enough for display purposes (the full
+ * customTrackingParser is used for aggregation elsewhere).
+ */
+function parseTrackerNote(text: string): ParsedTrackerNote | null {
+  const m = /^\s*(?:t|track)\s+([A-Za-z][A-Za-z0-9_]*)(?:\s+(-?\d+(?:\.\d+)?))?(.*)$/i.exec(text || '');
+  if (!m) return null;
+  const key = m[1].toLowerCase();
+  const value = m[2] ? parseFloat(m[2]) : null;
+  let trailing = (m[3] || '').trim();
+  let isNegative = false;
+  // No numeric value but a leading "-" means an "off" / negative
+  // flag — e.g. `t vegan - cheated at lunch` for a toggle.
+  if (m[2] === undefined && trailing.startsWith('-')) {
+    const rest = trailing.slice(1).trimStart();
+    if (!/^\d/.test(rest)) {
+      isNegative = true;
+      trailing = rest;
+    }
+  }
+  return { key, value: value !== null && !Number.isNaN(value) ? value : null, isNegative, trailing };
+}
+
+function normalizeTrackerType(t: string | null, isNumeric: number): string {
+  let type = t ?? (isNumeric ? 'sum' : 'text');
+  if (type === 'non_numeric') type = 'text';
+  if (type === 'currency') type = 'sum';
+  return type;
+}
+
+const TRACKER_TYPE_LABELS: Record<string, string> = {
+  text: 'Text',
+  count: 'Count',
+  sum: 'Sum',
+  average: 'Average',
+  traffic_light: 'Traffic Light',
+  itemized_list: 'Itemized List',
+  toggle: 'Toggle',
+};
+
+const TRAFFIC_LIGHT_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#8BC34A', '#34C759'];
+
+function NotePopup({ note, trackerItems, onClose }: NotePopupProps) {
+  // Build a label → tracker map once (handles both "t key" and
+  // "track LabelName" usages).
+  const byKey = new Map<string, CustomTrackingItem>();
+  const byLabel = new Map<string, CustomTrackingItem>();
+  for (const item of trackerItems) {
+    if (item.key) byKey.set(item.key.toLowerCase(), item);
+    if (item.label) byLabel.set(item.label.toLowerCase(), item);
+  }
+
+  const parsed = parseTrackerNote(note.text);
+  const trackerItem = parsed
+    ? (byKey.get(parsed.key) ?? byLabel.get(parsed.key))
+    : undefined;
+  const isTrackerNote = !!parsed && !!trackerItem;
+
   // Pick a human label + accent color matching the marker icon.
   let kind = 'Note';
   let accent = '#9CA3AF';
   if (note.isCycle) { kind = 'Cycle'; accent = '#FF6B9D'; }
   else if (note.isMeal) { kind = 'Meal'; accent = '#FF9500'; }
   else if (note.isHealth) { kind = 'Health'; accent = '#34C759'; }
-  else if (/\{tracking:/i.test(note.text || '') || /^@/.test(note.text || '')) { kind = 'Tracker'; accent = '#4A90C2'; }
+  else if (isTrackerNote) { kind = 'Tracker'; accent = '#4A90C2'; }
 
   const dt = new Date(note.timestamp);
   const dateLine = dt.toLocaleDateString(undefined, {
@@ -362,11 +448,71 @@ function NotePopup({ note, onClose }: NotePopupProps) {
             <div className="note-popup-clock">{timeLine}</div>
           </div>
         </div>
-        <div className="note-popup-body">{note.text}</div>
+
+        {isTrackerNote && trackerItem && parsed ? (
+          <TrackerNoteBody item={trackerItem} parsed={parsed} />
+        ) : (
+          <div className="note-popup-body">{note.text}</div>
+        )}
+
         {note.calories != null && note.calories > 0 && (
           <div className="note-popup-meta">{note.calories} kcal</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function TrackerNoteBody({ item, parsed }: { item: CustomTrackingItem; parsed: ParsedTrackerNote }) {
+  const type = normalizeTrackerType(item.type, item.isNumeric);
+  const typeLabel = TRACKER_TYPE_LABELS[type] ?? type;
+  const categoryLabel = item.category
+    ? item.category.charAt(0).toUpperCase() + item.category.slice(1)
+    : null;
+
+  // Render the value differently per type so the popup matches the
+  // grid cell's interpretation.
+  let valueNode: React.ReactNode = null;
+  if (type === 'toggle') {
+    const on = !parsed.isNegative;
+    valueNode = (
+      <span className={`tracker-popup-value tracker-popup-toggle ${on ? 'on' : 'off'}`}>
+        {on ? 'ON' : 'OFF'}
+      </span>
+    );
+  } else if (type === 'traffic_light' && parsed.value != null) {
+    const level = Math.max(1, Math.min(5, Math.round(parsed.value)));
+    const color = TRAFFIC_LIGHT_COLORS[level - 1];
+    valueNode = (
+      <span className="tracker-popup-value">
+        <span className="tracker-popup-swatch" style={{ background: color }} />
+        Level {level}
+      </span>
+    );
+  } else if (parsed.value != null) {
+    const display = type === 'average'
+      ? (Number.isInteger(parsed.value) ? String(parsed.value) : parsed.value.toFixed(1))
+      : String(parsed.value);
+    valueNode = <span className="tracker-popup-value">{display}</span>;
+  } else if (type === 'count' || type === 'itemized_list') {
+    valueNode = <span className="tracker-popup-value">+1</span>;
+  } else {
+    valueNode = <span className="tracker-popup-value tracker-popup-logged">Logged</span>;
+  }
+
+  return (
+    <div className="tracker-popup-body">
+      <div className="tracker-popup-label">{item.label}</div>
+      <div className="tracker-popup-meta">
+        {typeLabel}
+        {categoryLabel ? ` · ${categoryLabel}` : ''}
+        {' · key '}
+        <code>{item.key}</code>
+      </div>
+      <div className="tracker-popup-value-row">{valueNode}</div>
+      {parsed.trailing && (
+        <div className="tracker-popup-trailing">{parsed.trailing}</div>
+      )}
     </div>
   );
 }
