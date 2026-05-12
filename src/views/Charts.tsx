@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -92,17 +92,19 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
   return null;
 }
 
-// Fetch ALL day_entries + ALL activity_entries once per opened DB.
-// Date navigation then slices in memory — zero SQL invokes after
-// the initial fetch, so the tauri-plugin-sql IPC bridge doesn't
-// accumulate selects across the session.
+// Fetch ALL day_entries + ALL activity_entries once per opened DB
+// and pre-aggregate activities into per-day totals. Date navigation
+// then just hands the strips the same pre-built maps; the strips
+// look up by dateKey so showing data outside the visible window is
+// harmless. Net per-click cost: building a new days[] array and
+// re-rendering memoized SVGs.
 const WIDE_START = '1970-01-01';
 const WIDE_END = '2099-12-31';
 const WIDE_MS = 4102444800000; // 2100-01-01 in ms
 
 interface ChartsBundle {
   rowsByDate: Map<string, DayEntryRow>;
-  activities: ActivityEntry[];
+  activityTotals: Map<string, ActivityTotals>;
 }
 const chartsBundleCache = new WeakMap<object, Promise<ChartsBundle>>();
 
@@ -114,7 +116,8 @@ function loadChartsBundle(conn: Conn_): Promise<ChartsBundle> {
     const activities = await getActivityEntries(conn, 0, WIDE_MS);
     const rowsByDate = new Map<string, DayEntryRow>();
     for (const r of rows) rowsByDate.set(r.dateKey, r);
-    return { rowsByDate, activities };
+    const activityTotals = aggregateActivities(activities);
+    return { rowsByDate, activityTotals };
   })();
   chartsBundleCache.set(conn as unknown as object, p);
   return p;
@@ -149,12 +152,8 @@ export function Charts({ conn }: Props) {
     return list;
   }, [endDate, windowWeeks]);
 
-  const startMs = days[0].getTime();
-  const endMs = days[days.length - 1].getTime() + 24 * 60 * 60 * 1000;
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-  // Bundle = all DB data fetched once. Date navigation slices from
-  // it in memory.
+  // Bundle = all DB data fetched + aggregated once. Date navigation
+  // is just rendering different windows of the same maps.
   const [bundle, setBundle] = useState<ChartsBundle | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -165,32 +164,10 @@ export function Charts({ conn }: Props) {
     return () => { cancelled = true; };
   }, [conn]);
 
-  // Slice the bundle for the visible window. Cheap pure compute,
-  // no SQL.
-  const rowsByDate = useMemo(() => {
-    if (!bundle) return new Map<string, DayEntryRow>();
-    const out = new Map<string, DayEntryRow>();
-    for (const d of days) {
-      const k = dateKey(d);
-      const row = bundle.rowsByDate.get(k);
-      if (row) out.set(k, row);
-    }
-    return out;
-  }, [bundle, days]);
-
-  const activityTotals = useMemo(() => {
-    if (!bundle) return new Map<string, ActivityTotals>();
-    const padStart = startMs - MS_PER_DAY;
-    const padEnd = endMs + MS_PER_DAY;
-    // The full activity list is already timestamp-sorted at the SQL
-    // layer, but slicing by binary search would over-engineer this —
-    // a single pass is plenty fast for a year's worth of rows.
-    const filtered = bundle.activities.filter(
-      (a) => a.timestamp >= padStart && a.timestamp < padEnd,
-    );
-    return aggregateActivities(filtered);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bundle, startMs, endMs]);
+  const EMPTY_ROWS = useMemo(() => new Map<string, DayEntryRow>(), []);
+  const EMPTY_TOTALS = useMemo(() => new Map<string, ActivityTotals>(), []);
+  const rowsByDate = bundle?.rowsByDate ?? EMPTY_ROWS;
+  const activityTotals = bundle?.activityTotals ?? EMPTY_TOTALS;
 
   const stepBack = () => {
     const d = new Date(endDate);
