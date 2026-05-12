@@ -119,6 +119,29 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, opacity 0.12s, border-color 0.12s;
+}
+
+.chart-legend-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.chart-legend-item.off {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.chart-legend-item.off .chart-legend-dot {
+  opacity: 0.6;
 }
 
 .chart-legend-dot {

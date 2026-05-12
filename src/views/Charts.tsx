@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ENERGY_COLORS, type DayEntryRow } from '../db/types';
+import { ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import './Charts.css';
 
 interface Props {
@@ -152,8 +152,21 @@ const PAD_TOP = 2;
 const PAD_BOTTOM = 4; // room for day-of-week strip
 
 const MOOD_LINE_COLOR = '#00DD66';
+const ENERGY_LINE_COLOR = '#FFCC44';
+
+/** Color a continuous mood score 1..5 using the iPhone mood palette.
+ *  Round to the nearest integer position to pick a single color
+ *  (1=upset, 2=anxious, 3=sad, 4=neutral, 5=happy). */
+const MOOD_POSITION_NAMES = ['upset', 'anxious', 'sad', 'neutral', 'happy'] as const;
+function moodColorForScore(score: number): string {
+  const idx = Math.max(0, Math.min(4, Math.round(score) - 1));
+  return MOOD_COLORS[MOOD_POSITION_NAMES[idx]];
+}
 
 function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodEnergyStripProps) {
+  const [showMood, setShowMood] = useState(true);
+  const [showEnergy, setShowEnergy] = useState(true);
+
   const colW = (VBOX_W - 2 * PAD_X) / days.length;
   const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
 
@@ -219,14 +232,26 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
       <header className="chart-strip-head">
         <h3 className="chart-strip-title">Mood &amp; Energy</h3>
         <div className="chart-strip-legend">
-          <span className="chart-legend-item">
+          <button
+            type="button"
+            className={`chart-legend-item${showMood ? '' : ' off'}`}
+            aria-pressed={showMood}
+            onClick={() => setShowMood((v) => !v)}
+            title={showMood ? 'Hide mood line' : 'Show mood line'}
+          >
             <span className="chart-legend-dot" style={{ background: MOOD_LINE_COLOR }} />
             Mood
-          </span>
-          <span className="chart-legend-item">
-            <span className="chart-legend-dot" style={{ background: '#FFCC44' }} />
+          </button>
+          <button
+            type="button"
+            className={`chart-legend-item${showEnergy ? '' : ' off'}`}
+            aria-pressed={showEnergy}
+            onClick={() => setShowEnergy((v) => !v)}
+            title={showEnergy ? 'Hide energy line' : 'Show energy line'}
+          >
+            <span className="chart-legend-dot" style={{ background: ENERGY_LINE_COLOR }} />
             Energy
-          </span>
+          </button>
         </div>
         <div className="chart-strip-nav">
           <button type="button" onClick={onBack} aria-label="Previous week">‹</button>
@@ -284,8 +309,10 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
             );
           })()}
 
-          {/* Mood line first so energy paints on top — green */}
-          {moodSegments.map((s, i) => (
+          {/* Mood line first so energy paints on top. Line stays
+              green; dots use the iPhone mood palette per rounded
+              score (upset red ↦ happy green). */}
+          {showMood && moodSegments.map((s, i) => (
             <line
               key={`mood-seg-${i}`}
               x1={s.x1}
@@ -296,13 +323,13 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
               vectorEffect="non-scaling-stroke"
             />
           ))}
-          {moodPoints.map((p) => (
+          {showMood && moodPoints.map((p) => (
             <circle
               key={`mood-pt-${p.i}`}
               cx={p.x}
               cy={p.y}
-              r={0.5}
-              fill={MOOD_LINE_COLOR}
+              r={0.55}
+              fill={moodColorForScore(p.level)}
               vectorEffect="non-scaling-stroke"
             >
               <title>
@@ -314,7 +341,7 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
           {/* Energy line + dots — yellow line, ENERGY_COLORS dots
               (matches iPhone palette). Painted last so points sit on
               top of overlapping mood segments. */}
-          {energySegments.map((s, i) => (
+          {showEnergy && energySegments.map((s, i) => (
             <line
               key={`energy-seg-${i}`}
               x1={s.x1}
@@ -325,7 +352,7 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
               vectorEffect="non-scaling-stroke"
             />
           ))}
-          {energyPoints.map((p) => (
+          {showEnergy && energyPoints.map((p) => (
             <circle
               key={`energy-pt-${p.i}`}
               cx={p.x}
