@@ -6,7 +6,7 @@ import { MoodChart } from './views/MoodChart';
 import { Metrics } from './views/Metrics';
 import { Habits } from './views/Habits';
 import { Trackers } from './views/Trackers';
-import { Placeholder } from './views/Placeholder';
+import { Charts } from './views/Charts';
 import { LifeCalendar } from './views/LifeCalendar';
 import { SettingsModal, type ViewerSettings } from './views/SettingsModal';
 import { AboutModal } from './views/AboutModal';
@@ -251,7 +251,7 @@ function App() {
           {activeTab === 'metrics' && <Metrics conn={db.conn} settings={db.settings} />}
           {activeTab === 'habits' && <Habits conn={db.conn} />}
           {activeTab === 'trackers' && <Trackers conn={db.conn} />}
-          {activeTab === 'charts' && <Placeholder title="Charts" />}
+          {activeTab === 'charts' && <Charts conn={db.conn} />}
           {activeTab === 'life' && (
             <LifeCalendar
               birthdate={viewerSettings.birthdate}

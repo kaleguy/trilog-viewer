@@ -1,0 +1,132 @@
+.charts {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: #f0f0f0;
+  gap: 12px;
+}
+
+.chart-strip {
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: #050505;
+  padding: 12px 14px;
+  gap: 10px;
+}
+
+.chart-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chart-strip-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f0f0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.chart-strip-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-strip-nav button {
+  padding: 4px 10px;
+  font-size: 14px;
+  background: transparent;
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.chart-strip-nav button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chart-strip-range {
+  font-size: 13px;
+  color: #aaa;
+  min-width: 60px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-strip-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chart-svg {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart-grid-line {
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 0.05;
+}
+
+.chart-week-line {
+  stroke: rgba(255, 255, 255, 0.04);
+  stroke-width: 0.04;
+  stroke-dasharray: 0.4 0.4;
+}
+
+.chart-today-line {
+  stroke: #00cc55;
+  stroke-width: 0.08;
+  opacity: 0.5;
+}
+
+.chart-energy-line {
+  stroke: #FFCC44;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+/* Day-of-week strip beneath the chart. Each cell is one day wide. */
+.chart-day-row {
+  display: grid;
+  grid-template-columns: repeat(84, 1fr);
+  height: 18px;
+  margin-top: 4px;
+  padding: 0 calc(100% / 100); /* mirrors the SVG's PAD_X */
+}
+
+.chart-day-cell {
+  position: relative;
+  font-size: 9px;
+  color: #888;
+  text-align: center;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-day-cell.today .chart-day-month {
+  color: #00cc55;
+}
+
+.chart-day-month {
+  font-size: 9px;
+  font-weight: 700;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
