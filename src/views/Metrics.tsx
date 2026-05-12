@@ -230,18 +230,60 @@ interface ActivityTotals {
   byType: Map<string, number>;
 }
 
+/**
+ * Per-day hours-by-type, mirroring the iPhone WeekView's per-cell
+ * duration math. Activity entries don't carry a meaningful `duration`
+ * field anymore (always stored as 1 as a stub); the real span of each
+ * entry is the gap to the next entry, capped at 1h baseline, extended
+ * to next when `next.fillGaps` is set.
+ *
+ * Each entry's effective interval is then split across calendar days
+ * so that e.g. sleep from 23:00 to 07:00 contributes 1 h to the start
+ * day and 7 h to the next.
+ */
 function aggregateActivities(activities: ActivityEntry[]): Map<string, ActivityTotals> {
   const out = new Map<string, ActivityTotals>();
-  for (const a of activities) {
-    const k = dateKey(new Date(a.timestamp));
-    let bucket = out.get(k);
-    if (!bucket) {
-      bucket = { byType: new Map() };
-      out.set(k, bucket);
+  const HOUR_MS = 60 * 60 * 1000;
+  const DAY_MS = 24 * HOUR_MS;
+  const sorted = [...activities].sort((a, b) => a.timestamp - b.timestamp);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const entry = sorted[i];
+    const next: ActivityEntry | undefined = sorted[i + 1];
+    const start = entry.timestamp;
+    let end: number;
+    if (next) {
+      const gap = next.timestamp - start;
+      if (gap < HOUR_MS) {
+        end = next.timestamp; // truncate when next starts within 1h
+      } else if (next.fillGaps) {
+        end = next.timestamp; // extend to fill the gap
+      } else {
+        end = start + HOUR_MS; // cap at 1h baseline
+      }
+    } else {
+      end = start + HOUR_MS;
     }
-    const t = a.type.toLowerCase();
-    const hours = a.duration ?? 0;
-    bucket.byType.set(t, (bucket.byType.get(t) ?? 0) + hours);
+    if (end <= start) continue;
+
+    // Split [start, end) across day boundaries so cross-midnight
+    // activities (sleep) get credited to each day they touch.
+    const type = entry.type.toLowerCase();
+    let cursor = start;
+    while (cursor < end) {
+      const dayStart = startOfLocalDay(new Date(cursor)).getTime();
+      const dayEnd = dayStart + DAY_MS;
+      const sliceEnd = Math.min(end, dayEnd);
+      const hours = (sliceEnd - cursor) / HOUR_MS;
+      const k = dateKey(new Date(cursor));
+      let bucket = out.get(k);
+      if (!bucket) {
+        bucket = { byType: new Map() };
+        out.set(k, bucket);
+      }
+      bucket.byType.set(type, (bucket.byType.get(type) ?? 0) + hours);
+      cursor = sliceEnd;
+    }
   }
   return out;
 }
@@ -726,7 +768,11 @@ export function Metrics({ conn, settings }: Props) {
 
     Promise.all([
       getDayEntriesRange(conn, startDateKey, endDateKey),
-      getActivityEntries(conn, startMs, endMs),
+      // Pull one extra day's worth of activity entries before the
+      // window: sleep that starts at 23:00 the night before windowStart
+      // still contributes hours to windowStart's day after the
+      // cross-midnight split.
+      getActivityEntries(conn, startMs - MS_PER_DAY, endMs),
       getCycleNotes(conn, startMs - 30 * MS_PER_DAY, endMs),
       getPomodoroCountsRange(conn, startMs, endMs),
       getDailyCaloriesRange(conn, startMs, endMs),

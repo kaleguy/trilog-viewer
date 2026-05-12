@@ -105,7 +105,7 @@ CREATE TABLE activity_entries (
   workoutId TEXT,
   endTimestamp INTEGER,
   isGapFiller INTEGER DEFAULT 0,
-  fillGaps INTEGER DEFAULT 0
+  fillGaps INTEGER DEFAULT 1
 );
 CREATE TABLE note_entries (
   id TEXT PRIMARY KEY NOT NULL,
@@ -204,7 +204,7 @@ CREATE TABLE app_settings (
 // -- Statements
 const insMood = db.prepare(`INSERT INTO mood_entries (id, timestamp, type) VALUES (?, ?, ?)`);
 const insEnergy = db.prepare(`INSERT INTO energy_entries (id, timestamp, level) VALUES (?, ?, ?)`);
-const insActivity = db.prepare(`INSERT INTO activity_entries (id, timestamp, type, duration) VALUES (?, ?, ?, ?)`);
+const insActivity = db.prepare(`INSERT INTO activity_entries (id, timestamp, type, duration, fillGaps) VALUES (?, ?, ?, ?, 1)`);
 const insNote = db.prepare(`INSERT INTO note_entries (id, timestamp, text, isMeal, isHealth, isCycle, calories) VALUES (?, ?, ?, ?, ?, ?, ?)`);
 const insPomo = db.prepare(`INSERT INTO pomodoro_entries (id, startTime, endTime, focusText) VALUES (?, ?, ?, ?)`);
 const insDay = db.prepare(`INSERT INTO day_entries (
