@@ -43,13 +43,9 @@ function isoWeekNumber(date: Date): number {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
-// Module-level formatters — Date.prototype.toLocaleDateString recreates
+// Module-level formatter — Date.prototype.toLocaleDateString recreates
 // an Intl.DateTimeFormat on every call (~0.05ms each). The DayRow
-// renders 364 cells on a 1y view, so reusing one formatter saves
-// hundreds of milliseconds of mount cost.
-const FULL_DATE_FMT = new Intl.DateTimeFormat(undefined, {
-  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-});
+// formats month labels for every visible day; reuse one formatter.
 const MONTH_SHORT_FMT = new Intl.DateTimeFormat(undefined, { month: 'short' });
 
 /**
@@ -399,9 +395,15 @@ function MoodEnergyStrip({
 
   const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
 
+  // Skip per-day dots on long windows — at 1y each dot is sub-pixel-
+  // tight against its neighbors, and 1,100 individual <circle>
+  // elements is what was making 1y unresponsive in WebKit. The lines
+  // alone read fine at 1y; users can switch to 24w to see daily marks.
+  const showDots = days.length <= 200;
+
   // The heavy SVG body — memoized so hover-induced strip re-renders
   // get back the same React element reference and React's reconciler
-  // bails out without diffing the 5,000+ children.
+  // bails out without diffing the children.
   const svgEl = useMemo(() => (
     <svg
       className="chart-svg"
@@ -463,14 +465,13 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {showWellness && wellnessPoints.map((p) => (
+      {showDots && showWellness && wellnessPoints.map((p) => (
         <circle
           key={`well-pt-${p.i}`}
           cx={p.x}
           cy={p.y}
           r={0.55}
           fill={WELLNESS_LINE_COLOR}
-          vectorEffect="non-scaling-stroke"
         />
       ))}
 
@@ -481,14 +482,13 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {showMood && moodPoints.map((p) => (
+      {showDots && showMood && moodPoints.map((p) => (
         <circle
           key={`mood-pt-${p.i}`}
           cx={p.x}
           cy={p.y}
           r={0.55}
           fill={moodColorForScore(p.level)}
-          vectorEffect="non-scaling-stroke"
         />
       ))}
 
@@ -499,14 +499,13 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {showEnergy && energyPoints.map((p) => (
+      {showDots && showEnergy && energyPoints.map((p) => (
         <circle
           key={`energy-pt-${p.i}`}
           cx={p.x}
           cy={p.y}
           r={0.55}
           fill={ENERGY_COLORS[p.level - 1]}
-          vectorEffect="non-scaling-stroke"
         />
       ))}
     </svg>
@@ -515,7 +514,7 @@ function MoodEnergyStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [
     days, todayMs,
-    showMood, showEnergy, showWellness,
+    showMood, showEnergy, showWellness, showDots,
     moodSegments, moodPoints,
     energySegments, energyPoints,
     wellnessSegments, wellnessPoints,
@@ -584,31 +583,40 @@ interface DayRowProps {
   days: Date[];
   todayMs: number;
 }
-/** Calendar strip beneath each chart. Memoized so hover-induced
- *  parent re-renders don't rebuild 364 day cells. */
+/** Calendar strip beneath each chart. Renders only the cells that
+ *  actually have content (the 1st of each month and today),
+ *  absolutely positioned by percent. The previous version drew one
+ *  div per day inside a `repeat(N, 1fr)` grid — at 1y that was 364
+ *  cells per strip and WebKit's grid layout pass cost was material. */
 const DayRow = memo(function DayRow({ days, todayMs }: DayRowProps) {
+  const labels: { i: number; leftPct: number; label: string; isToday: boolean }[] = [];
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    const isFirstOfMonth = d.getDate() === 1;
+    const isToday = startOfLocalDay(d).getTime() === todayMs;
+    if (!isFirstOfMonth && !isToday) continue;
+    // Same centered-column math as crosshairLeftPct so labels sit
+    // under the correct day column.
+    const colVbox = (VBOX_W - 2 * PAD_X) / days.length;
+    const centerVbox = PAD_X + colVbox * (i + 0.5);
+    labels.push({
+      i,
+      leftPct: (centerVbox / VBOX_W) * 100,
+      label: isFirstOfMonth ? MONTH_SHORT_FMT.format(d) : '',
+      isToday,
+    });
+  }
   return (
-    <div
-      className="chart-day-row"
-      style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
-    >
-      {days.map((d, i) => {
-        const isFirstOfMonth = d.getDate() === 1;
-        const isToday = startOfLocalDay(d).getTime() === todayMs;
-        return (
-          <div
-            key={i}
-            className={`chart-day-cell${isToday ? ' today' : ''}`}
-            title={FULL_DATE_FMT.format(d)}
-          >
-            {isFirstOfMonth && (
-              <div className="chart-day-month">
-                {MONTH_SHORT_FMT.format(d)}
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div className="chart-day-row">
+      {labels.map((l) => (
+        <div
+          key={l.i}
+          className={`chart-day-cell${l.isToday ? ' today' : ''}`}
+          style={{ left: `${l.leftPct}%` }}
+        >
+          {l.label && <div className="chart-day-month">{l.label}</div>}
+        </div>
+      ))}
     </div>
   );
 });

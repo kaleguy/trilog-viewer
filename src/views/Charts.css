@@ -240,24 +240,23 @@
   border-radius: 50%;
 }
 
-/* Day-of-week strip beneath the chart. Each cell is one day wide. */
+/* Day-of-week strip beneath the chart. Only month-firsts and today
+   actually get rendered; they're positioned by percent so we don't
+   pay the layout cost of a `repeat(N, 1fr)` grid with 364 columns. */
 .chart-day-row {
-  display: grid;
-  /* grid-template-columns set inline per strip from days.length */
+  position: relative;
   height: 16px;
   margin-top: 4px;
-  padding: 0 calc(100% / 200); /* mirrors the SVG's PAD_X / VBOX_W ratio */
 }
 
 .chart-day-cell {
-  position: relative;
+  position: absolute;
+  top: 0;
   font-size: 9px;
   color: #888;
   text-align: center;
   line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transform: translateX(-50%);
 }
 
 .chart-day-cell.today .chart-day-month {
