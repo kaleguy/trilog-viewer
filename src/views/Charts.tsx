@@ -136,10 +136,25 @@ export function Charts({ conn }: Props) {
 
     setPerf(`${windowWeeks}w · EFFECT FIRED at t=0`);
 
-    // Bypass React entirely: write to document.title every 100ms.
-    // The macOS window title bar will reflect updates regardless of
-    // React state. If the title ticks but the toolbar doesn't, React
-    // is broken. If the title doesn't tick either, JS is blocked.
+    // Inject a fixed-position red banner appended to document.body.
+    // Watchdog writes to it via direct DOM (no React). If JS is
+    // alive at all, the banner counter will tick.
+    let banner = document.getElementById('charts-liveness-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'charts-liveness-banner';
+      banner.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0;
+        background: #c0392b; color: #fff;
+        padding: 8px; font-size: 18px; font-weight: 700;
+        font-family: ui-monospace, monospace;
+        text-align: center; z-index: 99999;
+        border-bottom: 2px solid #fff;
+      `;
+      document.body.appendChild(banner);
+    }
+    banner.textContent = 'LIVENESS · waiting for first tick';
+
     let watchdogPhase = 'about-to-query';
     let tickCount = 0;
     const originalTitle = document.title;
@@ -147,6 +162,9 @@ export function Charts({ conn }: Props) {
       if (cancelled) return;
       tickCount++;
       const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
+      // Direct DOM write — no React, no state, can't be blocked by
+      // React's scheduler.
+      if (banner) banner.textContent = `LIVENESS · TICK#${tickCount} · ${watchdogPhase} · ${elapsed}s`;
       document.title = `TICK#${tickCount} ${watchdogPhase} ${elapsed}s`;
       setPerf(`${windowWeeks}w · tick#${tickCount} · ${watchdogPhase} · ${elapsed}s`);
     }, 100);
@@ -222,6 +240,7 @@ export function Charts({ conn }: Props) {
     return () => {
       cancelled = true;
       clearInterval(watchdog);
+      restoreTitle();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
