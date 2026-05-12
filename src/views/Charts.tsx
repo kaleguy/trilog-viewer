@@ -485,6 +485,18 @@ function MoodEnergyStrip({
   // get back the same React element reference and React's reconciler
   // bails out without diffing the children.
   const svgEl = useMemo(() => (
+    days.length > 200 ? (
+      <svg
+        className="chart-svg"
+        viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
+        preserveAspectRatio="none"
+        role="img"
+      >
+        <text x={VBOX_W / 2} y={VBOX_H / 2} fill="#666" fontSize="2" textAnchor="middle">
+          1y diagnostic — chart disabled
+        </text>
+      </svg>
+    ) :
     <svg
       className="chart-svg"
       viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
@@ -765,6 +777,9 @@ function SleepStrip({
   const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
 
   const svgEl = useMemo(() => (
+    days.length > 200 ? (
+      <svg className="chart-svg" viewBox={`0 0 ${VBOX_W} ${VBOX_H}`} preserveAspectRatio="none" role="img" />
+    ) :
     <svg
       className="chart-svg"
       viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
@@ -988,6 +1003,9 @@ function ActivityStrip({
   const todayMs = useMemo(() => startOfLocalDay(new Date()).getTime(), []);
 
   const svgEl = useMemo(() => (
+    days.length > 200 ? (
+      <svg className="chart-svg" viewBox={`0 0 ${VBOX_W} ${VBOX_H}`} preserveAspectRatio="none" role="img" />
+    ) :
     <svg
       className="chart-svg"
       viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
