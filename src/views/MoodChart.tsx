@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Utensils, HeartPulse, Droplet, FileText, BarChart3 } from 'lucide-react';
+import { Utensils, HeartPulse, Moon, FileText, BarChart3 } from 'lucide-react';
 import {
   getActivityEntries,
   getCycleNotes,
@@ -673,7 +673,7 @@ interface NoteMarkerProps {
 function NoteMarker({ note, top, circular, onClick }: NoteMarkerProps) {
   // White marker always; the icon shape is the differentiator.
   let Icon = FileText;
-  if (note.isCycle) Icon = Droplet;
+  if (note.isCycle) Icon = Moon;
   else if (note.isMeal) Icon = Utensils;
   else if (note.isHealth) Icon = HeartPulse;
   else if (/\{tracking:/i.test(note.text || '') || /^@/.test(note.text || '')) Icon = BarChart3;
