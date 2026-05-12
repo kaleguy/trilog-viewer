@@ -270,14 +270,17 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
   const showEnergy = visibility === 'all' || visibility === 'energy';
   const showActivity = visibility === 'all' || visibility === 'activity';
 
+  // Step the window by one calendar month so the user can scrub
+  // through history without skipping `daysToShow` (90 days at the
+  // 'all' zoom) in a single click.
   const stepBack = () => {
     const d = new Date(endDate);
-    d.setDate(d.getDate() - daysToShow);
+    d.setMonth(d.getMonth() - 1);
     setEndDate(d);
   };
   const stepForward = () => {
     const d = new Date(endDate);
-    d.setDate(d.getDate() + daysToShow);
+    d.setMonth(d.getMonth() + 1);
     const today = startOfLocalDay(new Date());
     setEndDate(d > today ? today : d);
   };
