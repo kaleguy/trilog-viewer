@@ -136,9 +136,6 @@ export function Charts({ conn }: Props) {
 
     setPerf(`${windowWeeks}w · EFFECT FIRED at t=0`);
 
-    // Inject a fixed-position red banner appended to document.body.
-    // Watchdog writes to it via direct DOM (no React). If JS is
-    // alive at all, the banner counter will tick.
     let banner = document.getElementById('charts-liveness-banner');
     if (!banner) {
       banner = document.createElement('div');
@@ -146,30 +143,59 @@ export function Charts({ conn }: Props) {
       banner.style.cssText = `
         position: fixed; top: 0; left: 0; right: 0;
         background: #c0392b; color: #fff;
-        padding: 8px; font-size: 18px; font-weight: 700;
+        padding: 8px; font-size: 16px; font-weight: 700;
         font-family: ui-monospace, monospace;
         text-align: center; z-index: 99999;
-        border-bottom: 2px solid #fff;
       `;
       document.body.appendChild(banner);
     }
-    banner.textContent = 'LIVENESS · waiting for first tick';
 
     let watchdogPhase = 'about-to-query';
     let tickCount = 0;
     const originalTitle = document.title;
+
+    // Multiple liveness probes — at least one should land if JS is
+    // doing ANYTHING. If banner stays at "EFFECT_BODY_SYNC_DONE",
+    // every async mechanism (microtask, setTimeout, rAF, setInterval)
+    // is being starved.
+    banner.textContent = 'CHECKPOINT 0: synchronous setup';
+
+    // Microtask
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (banner) banner.textContent = 'CHECKPOINT 1: microtask fired';
+    });
+
+    // setTimeout 0
+    setTimeout(() => {
+      if (cancelled) return;
+      if (banner) banner.textContent = 'CHECKPOINT 2: setTimeout(0) fired';
+    }, 0);
+
+    // requestAnimationFrame chain — most reliable liveness indicator
+    let rafCount = 0;
+    const rafTick = () => {
+      if (cancelled) return;
+      rafCount++;
+      if (banner) {
+        banner.textContent = `CHECKPOINT 3: rAF#${rafCount} · ${watchdogPhase} · ${((performance.now() - tStart) / 1000).toFixed(1)}s`;
+      }
+      requestAnimationFrame(rafTick);
+    };
+    requestAnimationFrame(rafTick);
+
+    // setInterval fallback
     const watchdog = setInterval(() => {
       if (cancelled) return;
       tickCount++;
       const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
-      // Direct DOM write — no React, no state, can't be blocked by
-      // React's scheduler.
-      if (banner) banner.textContent = `LIVENESS · TICK#${tickCount} · ${watchdogPhase} · ${elapsed}s`;
       document.title = `TICK#${tickCount} ${watchdogPhase} ${elapsed}s`;
       setPerf(`${windowWeeks}w · tick#${tickCount} · ${watchdogPhase} · ${elapsed}s`);
     }, 100);
     const restoreTitle = () => { document.title = originalTitle; };
-    void restoreTitle; // referenced in cleanup below
+    void restoreTitle;
+
+    banner.textContent = 'CHECKPOINT BODY_END: about to defer runQuery 2s';
 
     const runQuery = async () => {
       try {
@@ -235,7 +261,15 @@ export function Charts({ conn }: Props) {
         setPerf(`${windowWeeks}w · error: ${String(err).slice(0, 80)}`);
       }
     };
-    runQuery();
+    // Defer runQuery by 2 seconds. If the banner ticks during those
+    // 2 seconds, the freeze happens IN the SQL invoke. If the banner
+    // never ticks even during the 2-second delay, the freeze is in
+    // the React commit / WebKit paint of the post-effect render.
+    setTimeout(() => {
+      if (cancelled) return;
+      if (banner) banner.textContent = 'CHECKPOINT runQuery: about to call runQuery()';
+      runQuery();
+    }, 2000);
 
     return () => {
       cancelled = true;
