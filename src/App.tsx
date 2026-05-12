@@ -194,16 +194,13 @@ function App() {
         {exportedAt && (
           <span
             className="snapshot-info"
-            title={`Snapshot from ${exportedAt.toLocaleString()}${
-              db.settings.zip ? ` · ZIP ${db.settings.zip}` : ''
-            }${
+            title={`Snapshot exported ${exportedAt.toLocaleString()}${
               db.settings.latitude && db.settings.longitude
                 ? ` · ${db.settings.latitude}, ${db.settings.longitude}`
                 : ''
             }`}
           >
-            {exportedAt.toLocaleDateString()}
-            {db.settings.zip ? ` · ${db.settings.zip}` : ''}
+            Exported {exportedAt.toLocaleDateString()}
           </span>
         )}
         <div className="header-menu" ref={menuRef}>
