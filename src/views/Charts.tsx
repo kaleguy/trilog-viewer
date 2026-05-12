@@ -35,6 +35,46 @@ function isoWeekNumber(date: Date): number {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+/**
+ * Single-number mood score (1=worst .. 5=best) from a day_entries
+ * row. Prefers the newer 5-tuple `moodValues` ([upset, anxious, sad,
+ * neutral, happy], each 1-10) and computes a weighted mean —
+ * upset weights position 1, anxious 2, sad 3, neutral 4, happy 5 —
+ * so the score is a continuous indicator of where the day's mix
+ * landed. Falls back to the legacy single `mood` string when
+ * moodValues is missing. Returns null if neither is set.
+ */
+const MOOD_POSITION: Record<string, number> = {
+  upset: 1, anxious: 2, sad: 3, neutral: 4, happy: 5,
+};
+
+function computeDailyMood(row: { mood: string | null; moodValues: string | null }): number | null {
+  if (row.moodValues) {
+    try {
+      const arr = JSON.parse(row.moodValues) as number[];
+      if (Array.isArray(arr) && arr.length === 5) {
+        let weighted = 0;
+        let total = 0;
+        for (let i = 0; i < 5; i++) {
+          const v = arr[i];
+          if (typeof v === 'number' && v > 0) {
+            weighted += (i + 1) * v;
+            total += v;
+          }
+        }
+        if (total > 0) {
+          const score = weighted / total;
+          return Math.max(1, Math.min(5, score));
+        }
+      }
+    } catch { /* fall through */ }
+  }
+  if (row.mood && MOOD_POSITION[row.mood] != null) {
+    return MOOD_POSITION[row.mood];
+  }
+  return null;
+}
+
 export function Charts({ conn }: Props) {
   const [endDate, setEndDate] = useState<Date>(() => thisOrNextSaturday(new Date()));
 
@@ -83,7 +123,7 @@ export function Charts({ conn }: Props) {
 
   return (
     <div className="charts">
-      <EnergyStrip
+      <MoodEnergyStrip
         days={days}
         rowsByDate={rowsByDate}
         endDate={endDate}
@@ -95,7 +135,7 @@ export function Charts({ conn }: Props) {
   );
 }
 
-interface EnergyStripProps {
+interface MoodEnergyStripProps {
   days: Date[];
   rowsByDate: Map<string, DayEntryRow>;
   endDate: Date;
@@ -111,7 +151,9 @@ const PAD_X = 1;    // leave a touch of room so dots near the edges don't clip
 const PAD_TOP = 2;
 const PAD_BOTTOM = 4; // room for day-of-week strip
 
-function EnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: EnergyStripProps) {
+const MOOD_LINE_COLOR = '#00DD66';
+
+function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodEnergyStripProps) {
   const colW = (VBOX_W - 2 * PAD_X) / days.length;
   const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
 
@@ -124,26 +166,50 @@ function EnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: EnergyStr
     return PAD_TOP + (1 - t) * plotH;
   }
 
-  // Build the line as a series of line segments only where two
-  // consecutive days both have a value. Don't bridge gaps — we
-  // don't want to imply data we didn't collect.
-  const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  let prev: { i: number; y: number } | null = null;
-  const points: { i: number; level: number; x: number; y: number }[] = [];
+  // Walk each day once and build mood + energy series in parallel.
+  // Segments only bridge consecutive days that both have a value for
+  // the given metric, so missing days read as missing.
+  type Segment = { x1: number; y1: number; x2: number; y2: number };
+  type Point = { i: number; level: number; x: number; y: number };
+
+  const energySegments: Segment[] = [];
+  const energyPoints: Point[] = [];
+  let prevEnergy: { i: number; y: number } | null = null;
+
+  const moodSegments: Segment[] = [];
+  const moodPoints: Point[] = [];
+  let prevMood: { i: number; y: number } | null = null;
+
   days.forEach((d, i) => {
     const row = rowsByDate.get(dateKey(d));
-    const level = row?.energy ?? null;
-    if (level == null || level < 1 || level > 5) {
-      prev = null;
-      return;
+
+    // -- Energy
+    const energyLevel = row?.energy ?? null;
+    if (energyLevel != null && energyLevel >= 1 && energyLevel <= 5) {
+      const x = xFor(i);
+      const y = yFor(energyLevel);
+      energyPoints.push({ i, level: energyLevel, x, y });
+      if (prevEnergy) {
+        energySegments.push({ x1: xFor(prevEnergy.i), y1: prevEnergy.y, x2: x, y2: y });
+      }
+      prevEnergy = { i, y };
+    } else {
+      prevEnergy = null;
     }
-    const x = xFor(i);
-    const y = yFor(level);
-    points.push({ i, level, x, y });
-    if (prev) {
-      segments.push({ x1: xFor(prev.i), y1: prev.y, x2: x, y2: y });
+
+    // -- Mood (derived score from moodValues or legacy mood string)
+    const moodScore = row ? computeDailyMood({ mood: row.mood, moodValues: row.moodValues }) : null;
+    if (moodScore != null) {
+      const x = xFor(i);
+      const y = yFor(moodScore);
+      moodPoints.push({ i, level: moodScore, x, y });
+      if (prevMood) {
+        moodSegments.push({ x1: xFor(prevMood.i), y1: prevMood.y, x2: x, y2: y });
+      }
+      prevMood = { i, y };
+    } else {
+      prevMood = null;
     }
-    prev = { i, y };
   });
 
   const todayMs = startOfLocalDay(new Date()).getTime();
@@ -151,7 +217,17 @@ function EnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: EnergyStr
   return (
     <section className="chart-strip">
       <header className="chart-strip-head">
-        <h3 className="chart-strip-title">Energy</h3>
+        <h3 className="chart-strip-title">Mood &amp; Energy</h3>
+        <div className="chart-strip-legend">
+          <span className="chart-legend-item">
+            <span className="chart-legend-dot" style={{ background: MOOD_LINE_COLOR }} />
+            Mood
+          </span>
+          <span className="chart-legend-item">
+            <span className="chart-legend-dot" style={{ background: '#FFCC44' }} />
+            Energy
+          </span>
+        </div>
         <div className="chart-strip-nav">
           <button type="button" onClick={onBack} aria-label="Previous week">‹</button>
           <span className="chart-strip-range">Week {isoWeekNumber(endDate)}</span>
@@ -208,12 +284,39 @@ function EnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: EnergyStr
             );
           })()}
 
-          {/* Energy line — yellow, broken across gaps. preserveAspectRatio
-              is "none" so we scale x/y independently; vector-effect on the
-              path keeps the stroke crisp. */}
-          {segments.map((s, i) => (
+          {/* Mood line first so energy paints on top — green */}
+          {moodSegments.map((s, i) => (
             <line
-              key={`seg-${i}`}
+              key={`mood-seg-${i}`}
+              x1={s.x1}
+              y1={s.y1}
+              x2={s.x2}
+              y2={s.y2}
+              className="chart-mood-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {moodPoints.map((p) => (
+            <circle
+              key={`mood-pt-${p.i}`}
+              cx={p.x}
+              cy={p.y}
+              r={0.5}
+              fill={MOOD_LINE_COLOR}
+              vectorEffect="non-scaling-stroke"
+            >
+              <title>
+                {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — mood ${p.level.toFixed(1)}`}
+              </title>
+            </circle>
+          ))}
+
+          {/* Energy line + dots — yellow line, ENERGY_COLORS dots
+              (matches iPhone palette). Painted last so points sit on
+              top of overlapping mood segments. */}
+          {energySegments.map((s, i) => (
+            <line
+              key={`energy-seg-${i}`}
               x1={s.x1}
               y1={s.y1}
               x2={s.x2}
@@ -222,11 +325,9 @@ function EnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: EnergyStr
               vectorEffect="non-scaling-stroke"
             />
           ))}
-
-          {/* Dots — color per ENERGY_COLORS (matches iPhone palette) */}
-          {points.map((p) => (
+          {energyPoints.map((p) => (
             <circle
-              key={`pt-${p.i}`}
+              key={`energy-pt-${p.i}`}
               cx={p.x}
               cy={p.y}
               r={0.55}
