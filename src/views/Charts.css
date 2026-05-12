@@ -11,6 +11,49 @@
   flex-shrink: 0;
 }
 
+/* Window-length selector at the top of the Charts tab. Toggles
+   between fixed preset spans (no free-form range). */
+.charts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
+.charts-toolbar-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.charts-window-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #aaa;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.charts-window-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ddd;
+}
+
+.charts-window-btn.active {
+  background: rgba(74, 144, 194, 0.18);
+  border-color: rgba(74, 144, 194, 0.5);
+  color: #fff;
+}
+
 .chart-strip {
   display: flex;
   flex-direction: column;
@@ -175,7 +218,7 @@
 /* Day-of-week strip beneath the chart. Each cell is one day wide. */
 .chart-day-row {
   display: grid;
-  grid-template-columns: repeat(168, 1fr);
+  /* grid-template-columns set inline per strip from days.length */
   height: 16px;
   margin-top: 4px;
   padding: 0 calc(100% / 200); /* mirrors the SVG's PAD_X / VBOX_W ratio */

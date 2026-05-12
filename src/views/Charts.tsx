@@ -8,8 +8,15 @@ interface Props {
   conn: Conn_;
 }
 
-const WEEKS = 24;
-const DAYS = WEEKS * 7;
+// Preset window lengths the user can switch between. Step nav is
+// always one week regardless of which one is selected.
+const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
+  { weeks: 4, label: '4w' },
+  { weeks: 12, label: '12w' },
+  { weeks: 24, label: '24w' },
+  { weeks: 52, label: '1y' },
+];
+const DEFAULT_WEEKS = 24;
 
 function startOfLocalDay(date: Date): Date {
   const d = new Date(date);
@@ -78,6 +85,7 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
 
 export function Charts({ conn }: Props) {
   const [endDate, setEndDate] = useState<Date>(() => thisOrNextSaturday(new Date()));
+  const [windowWeeks, setWindowWeeks] = useState<number>(DEFAULT_WEEKS);
 
   // Shared crosshair index — when the mouse hovers any strip, every
   // strip in the column draws a vertical line at the same day so the
@@ -85,18 +93,19 @@ export function Charts({ conn }: Props) {
   // date). `null` = no hover.
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
 
-  // 12 weeks of days, ending on `endDate` (a Saturday), starting on
-  // the Sunday 83 days earlier. Future days inside the window render
-  // as blank columns.
+  // N weeks of days, ending on `endDate` (a Saturday), starting on
+  // the Sunday (N*7 − 1) days earlier. Future days inside the window
+  // render as blank columns.
   const days = useMemo(() => {
+    const dayCount = windowWeeks * 7;
     const list: Date[] = [];
-    for (let i = DAYS - 1; i >= 0; i--) {
+    for (let i = dayCount - 1; i >= 0; i--) {
       const d = new Date(endDate);
       d.setDate(d.getDate() - i);
       list.push(d);
     }
     return list;
-  }, [endDate]);
+  }, [endDate, windowWeeks]);
 
   const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
   const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
@@ -141,6 +150,20 @@ export function Charts({ conn }: Props) {
 
   return (
     <div className="charts">
+      <div className="charts-toolbar">
+        <span className="charts-toolbar-label">Window</span>
+        {WINDOW_OPTIONS.map((opt) => (
+          <button
+            key={opt.weeks}
+            type="button"
+            className={`charts-window-btn${windowWeeks === opt.weeks ? ' active' : ''}`}
+            aria-pressed={windowWeeks === opt.weeks}
+            onClick={() => setWindowWeeks(opt.weeks)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
       <MoodEnergyStrip
         days={days}
         rowsByDate={rowsByDate}
@@ -517,7 +540,7 @@ function MoodEnergyStrip({
 
         {/* Day-of-week strip beneath the chart. Show date numbers on
             the 1st of each month so the calendar reads. */}
-        <div className="chart-day-row">
+        <div className="chart-day-row" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
           {days.map((d, i) => {
             const isFirstOfMonth = d.getDate() === 1;
             const isToday = startOfLocalDay(d).getTime() === todayMs;
@@ -704,7 +727,7 @@ function SleepStrip({
           )}
         </svg>
 
-        <div className="chart-day-row">
+        <div className="chart-day-row" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
           {days.map((d, i) => {
             const isFirstOfMonth = d.getDate() === 1;
             const isToday = startOfLocalDay(d).getTime() === todayMs;
@@ -952,7 +975,7 @@ function ActivityStrip({
           )}
         </svg>
 
-        <div className="chart-day-row">
+        <div className="chart-day-row" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
           {days.map((d, i) => {
             const isFirstOfMonth = d.getDate() === 1;
             const isToday = startOfLocalDay(d).getTime() === todayMs;
