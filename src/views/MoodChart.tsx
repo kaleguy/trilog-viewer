@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Utensils, HeartPulse, Moon, FileText, BarChart3 } from 'lucide-react';
+import { Utensils, HeartPulse, Moon, FileText, Tag } from 'lucide-react';
 import {
   getActivityEntries,
   getCustomTrackingItems,
@@ -149,11 +149,12 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
   const [showNotes, setShowNotes] = useState(true);
   const [selectedNote, setSelectedNote] = useState<NoteEntry | null>(null);
   const [trackerItems, setTrackerItems] = useState<CustomTrackingItem[]>([]);
+  const trackerKeys = useMemo(() => buildTrackerKeySet(trackerItems), [trackerItems]);
 
   // Custom tracker definitions don't change with the visible date
   // window — pull them once and cache. The note popup uses them to
   // enrich "t key value" notes with the tracker's label / type /
-  // category.
+  // category; the marker uses them to pick the Tag icon.
   useEffect(() => {
     let cancelled = false;
     getCustomTrackingItems(conn)
@@ -335,6 +336,7 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
         cycleByDate={cycleByDate}
         weatherByDate={weatherByDate}
         onNoteClick={setSelectedNote}
+        trackerKeys={trackerKeys}
       />
 
       {/* Note popup — click a marker in the chart to open. Click the
@@ -517,6 +519,18 @@ function TrackerNoteBody({ item, parsed }: { item: CustomTrackingItem; parsed: P
   );
 }
 
+/** Lowercased keys of every defined custom tracker. Used by
+ *  NoteMarker to decide whether a "t key …" note really is a
+ *  tracker entry (vs. a sentence that just starts with "t "). */
+function buildTrackerKeySet(items: CustomTrackingItem[]): Set<string> {
+  const set = new Set<string>();
+  for (const it of items) {
+    if (it.key) set.add(it.key.toLowerCase());
+    if (it.label) set.add(it.label.toLowerCase());
+  }
+  return set;
+}
+
 interface ChartGridProps {
   buckets: DayBucket[];
   showMood: boolean;
@@ -529,6 +543,7 @@ interface ChartGridProps {
   cycleByDate: Map<string, string>;
   weatherByDate: Map<string, HistoricalWeather>;
   onNoteClick: (note: NoteEntry) => void;
+  trackerKeys: Set<string>;
 }
 
 const HOUR_LABELS = [3, 6, 9, 12, 15, 18, 21, 24];
@@ -553,7 +568,7 @@ function labelTransform(h: number): string {
 function ChartGrid({
   buckets, showMood, showEnergy, showActivity, showNotes,
   showCycles, showWeather, showMoonPhases, cycleByDate, weatherByDate,
-  onNoteClick,
+  onNoteClick, trackerKeys,
 }: ChartGridProps) {
   const visibleCount = (showMood ? 1 : 0) + (showEnergy ? 1 : 0) + (showActivity ? 1 : 0);
   const subColumns = Math.max(visibleCount, 1);
@@ -612,6 +627,7 @@ function ChartGrid({
               cycleRowH={cycleH}
               moonRowH={moonH}
               onNoteClick={onNoteClick}
+              trackerKeys={trackerKeys}
             />
           ))}
           {/* Reference lines pinned to the day-track area only. Stop them
@@ -645,12 +661,13 @@ interface DayColumnProps {
   cycleRowH: number;
   moonRowH: number;
   onNoteClick: (note: NoteEntry) => void;
+  trackerKeys: Set<string>;
 }
 
 function DayColumn({
   bucket, isToday, showMood, showEnergy, showActivity, showNotes,
   subColumns, minWidth, weather, cycleColorHex,
-  weatherRowH, cycleRowH, moonRowH, onNoteClick,
+  weatherRowH, cycleRowH, moonRowH, onNoteClick, trackerKeys,
 }: DayColumnProps) {
   const { date } = bucket;
   const dayStart = startOfLocalDay(date).getTime();
@@ -736,6 +753,7 @@ function DayColumn({
                 top={yPct(n.timestamp)}
                 circular={subColumns > 1}
                 onClick={() => onNoteClick(n)}
+                trackerKeys={trackerKeys}
               />
             ))}
           </div>
@@ -809,6 +827,7 @@ interface NoteMarkerProps {
   top: number;
   circular: boolean;
   onClick?: () => void;
+  trackerKeys: Set<string>;
 }
 
 /**
@@ -816,13 +835,25 @@ interface NoteMarkerProps {
  * an icon picked from the note's type flags. Tracking notes get a square
  * background to match the iOS chart's visual distinction.
  */
-function NoteMarker({ note, top, circular, onClick }: NoteMarkerProps) {
-  // White marker always; the icon shape is the differentiator.
+function NoteMarker({ note, top, circular, onClick, trackerKeys }: NoteMarkerProps) {
+  // Pick an icon based on the note's classification. Tracker
+  // detection mirrors the popup: parse the leading "t key" pattern
+  // and confirm the key matches a real custom_tracking_items row.
+  // Without the trackerKeys check, a sentence like "t the quick
+  // brown fox" would false-positive.
   let Icon = FileText;
-  if (note.isCycle) Icon = Moon;
-  else if (note.isMeal) Icon = Utensils;
-  else if (note.isHealth) Icon = HeartPulse;
-  else if (/\{tracking:/i.test(note.text || '') || /^@/.test(note.text || '')) Icon = BarChart3;
+  if (note.isCycle) {
+    Icon = Moon;
+  } else if (note.isMeal) {
+    Icon = Utensils;
+  } else if (note.isHealth) {
+    Icon = HeartPulse;
+  } else {
+    const m = /^\s*(?:t|track)\s+([A-Za-z][A-Za-z0-9_]*)/i.exec(note.text || '');
+    if (m && trackerKeys.has(m[1].toLowerCase())) {
+      Icon = Tag;
+    }
+  }
 
   return (
     <button
