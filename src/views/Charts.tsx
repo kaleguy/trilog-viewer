@@ -43,6 +43,18 @@ function isoWeekNumber(date: Date): number {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+// Module-level formatters — Date.prototype.toLocaleDateString recreates
+// an Intl.DateTimeFormat on every call (~0.05ms each). On the 1y chart
+// we render ~15k tooltips, so reusing one formatter cuts initial mount
+// by an order of magnitude.
+const TOOLTIP_DATE_FMT = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short', month: 'short', day: 'numeric',
+});
+const FULL_DATE_FMT = new Intl.DateTimeFormat(undefined, {
+  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+});
+const MONTH_SHORT_FMT = new Intl.DateTimeFormat(undefined, { month: 'short' });
+
 /**
  * Single-number mood score (1=worst .. 5=best) from a day_entries
  * row. Prefers the newer 5-tuple `moodValues` ([upset, anxious, sad,
@@ -465,7 +477,7 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         >
           <title>
-            {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — wellness ${p.level}`}
+            {`${TOOLTIP_DATE_FMT.format(days[p.i])} — wellness ${p.level}`}
           </title>
         </circle>
       ))}
@@ -494,7 +506,7 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         >
           <title>
-            {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — mood ${p.level.toFixed(1)}`}
+            {`${TOOLTIP_DATE_FMT.format(days[p.i])} — mood ${p.level.toFixed(1)}`}
           </title>
         </circle>
       ))}
@@ -523,7 +535,7 @@ function MoodEnergyStrip({
           vectorEffect="non-scaling-stroke"
         >
           <title>
-            {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — energy ${p.level}`}
+            {`${TOOLTIP_DATE_FMT.format(days[p.i])} — energy ${p.level}`}
           </title>
         </circle>
       ))}
@@ -617,13 +629,11 @@ const DayRow = memo(function DayRow({ days, todayMs }: DayRowProps) {
           <div
             key={i}
             className={`chart-day-cell${isToday ? ' today' : ''}`}
-            title={d.toLocaleDateString(undefined, {
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-            })}
+            title={FULL_DATE_FMT.format(d)}
           >
             {isFirstOfMonth && (
               <div className="chart-day-month">
-                {d.toLocaleDateString(undefined, { month: 'short' })}
+                {MONTH_SHORT_FMT.format(d)}
               </div>
             )}
           </div>
@@ -753,7 +763,7 @@ function SleepStrip({
           rx={0.1}
         >
           <title>
-            {`${days[b.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
+            {`${TOOLTIP_DATE_FMT.format(days[b.i])} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
           </title>
         </rect>
       ))}
@@ -959,7 +969,7 @@ function ActivityStrip({
             fill={seg.color}
           >
             <title>
-              {`${days[day.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${ACTIVITY_TYPE_LABELS[seg.type] ?? seg.type}: ${seg.hours.toFixed(1)}h`}
+              {`${TOOLTIP_DATE_FMT.format(days[day.i])} — ${ACTIVITY_TYPE_LABELS[seg.type] ?? seg.type}: ${seg.hours.toFixed(1)}h`}
             </title>
           </rect>
         ))
