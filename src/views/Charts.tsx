@@ -156,6 +156,7 @@ const PAD_BOTTOM = 4;
 
 const MOOD_LINE_COLOR = '#00DD66';
 const ENERGY_LINE_COLOR = '#FFCC44';
+const WELLNESS_LINE_COLOR = '#5AC8FA';
 
 /** Color a continuous mood score 1..5 using the iPhone mood palette.
  *  Round to the nearest integer position to pick a single color
@@ -166,9 +167,15 @@ function moodColorForScore(score: number): string {
   return MOOD_COLORS[MOOD_POSITION_NAMES[idx]];
 }
 
+/** Wellness dot colors — same red→green progression the iPhone uses
+ *  for the wellness icons in WeekView (Thermometer/Pill/Bandage/
+ *  Heart/HeartPulse). */
+const WELLNESS_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#8BC34A', '#34C759'];
+
 function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodEnergyStripProps) {
   const [showMood, setShowMood] = useState(true);
   const [showEnergy, setShowEnergy] = useState(true);
+  const [showWellness, setShowWellness] = useState(true);
 
   const colW = (VBOX_W - 2 * PAD_X) / days.length;
   const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
@@ -195,6 +202,10 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
   const moodSegments: Segment[] = [];
   const moodPoints: Point[] = [];
   let prevMood: { i: number; y: number } | null = null;
+
+  const wellnessSegments: Segment[] = [];
+  const wellnessPoints: Point[] = [];
+  let prevWellness: { i: number; y: number } | null = null;
 
   days.forEach((d, i) => {
     const row = rowsByDate.get(dateKey(d));
@@ -226,6 +237,20 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
     } else {
       prevMood = null;
     }
+
+    // -- Wellness (1-5 integer)
+    const wellnessLevel = row?.wellnessLevel ?? null;
+    if (wellnessLevel != null && wellnessLevel >= 1 && wellnessLevel <= 5) {
+      const x = xFor(i);
+      const y = yFor(wellnessLevel);
+      wellnessPoints.push({ i, level: wellnessLevel, x, y });
+      if (prevWellness) {
+        wellnessSegments.push({ x1: xFor(prevWellness.i), y1: prevWellness.y, x2: x, y2: y });
+      }
+      prevWellness = { i, y };
+    } else {
+      prevWellness = null;
+    }
   });
 
   const todayMs = startOfLocalDay(new Date()).getTime();
@@ -233,7 +258,7 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
   return (
     <section className="chart-strip">
       <header className="chart-strip-head">
-        <h3 className="chart-strip-title">Mood &amp; Energy</h3>
+        <h3 className="chart-strip-title">Mood · Energy · Wellness</h3>
         <div className="chart-strip-legend">
           <button
             type="button"
@@ -254,6 +279,16 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
           >
             <span className="chart-legend-dot" style={{ background: ENERGY_LINE_COLOR }} />
             Energy
+          </button>
+          <button
+            type="button"
+            className={`chart-legend-item${showWellness ? '' : ' off'}`}
+            aria-pressed={showWellness}
+            onClick={() => setShowWellness((v) => !v)}
+            title={showWellness ? 'Hide wellness line' : 'Show wellness line'}
+          >
+            <span className="chart-legend-dot" style={{ background: WELLNESS_LINE_COLOR }} />
+            Wellness
           </button>
         </div>
         <div className="chart-strip-nav">
@@ -312,7 +347,35 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
             );
           })()}
 
-          {/* Mood line first so energy paints on top. Line stays
+          {/* Wellness paints first — cyan line, iPhone wellness
+              palette dots (red→green per level 1..5). */}
+          {showWellness && wellnessSegments.map((s, i) => (
+            <line
+              key={`well-seg-${i}`}
+              x1={s.x1}
+              y1={s.y1}
+              x2={s.x2}
+              y2={s.y2}
+              className="chart-wellness-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {showWellness && wellnessPoints.map((p) => (
+            <circle
+              key={`well-pt-${p.i}`}
+              cx={p.x}
+              cy={p.y}
+              r={0.55}
+              fill={WELLNESS_COLORS[Math.max(0, Math.min(4, Math.round(p.level) - 1))]}
+              vectorEffect="non-scaling-stroke"
+            >
+              <title>
+                {`${days[p.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — wellness ${p.level}`}
+              </title>
+            </circle>
+          ))}
+
+          {/* Mood line next so energy paints on top. Line stays
               green; dots use the iPhone mood palette per rounded
               score (upset red ↦ happy green). */}
           {showMood && moodSegments.map((s, i) => (

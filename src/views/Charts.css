@@ -107,6 +107,14 @@
   fill: none;
 }
 
+.chart-wellness-line {
+  stroke: #5AC8FA;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
 .chart-strip-legend {
   display: inline-flex;
   align-items: center;
