@@ -134,19 +134,24 @@ export function Charts({ conn }: Props) {
     const tStart = performance.now();
     console.log(`[charts] effect fired window=${windowWeeks}w range=${startDateKey}..${endDateKey}`);
 
-    // Confirm useEffect fired by setting perf synchronously, BEFORE
-    // any async work. If the toolbar updates to "EFFECT FIRED" but
-    // never ticks past, JS is blocked before our first interval.
     setPerf(`${windowWeeks}w · EFFECT FIRED at t=0`);
 
+    // Bypass React entirely: write to document.title every 100ms.
+    // The macOS window title bar will reflect updates regardless of
+    // React state. If the title ticks but the toolbar doesn't, React
+    // is broken. If the title doesn't tick either, JS is blocked.
     let watchdogPhase = 'about-to-query';
     let tickCount = 0;
+    const originalTitle = document.title;
     const watchdog = setInterval(() => {
       if (cancelled) return;
       tickCount++;
       const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
+      document.title = `TICK#${tickCount} ${watchdogPhase} ${elapsed}s`;
       setPerf(`${windowWeeks}w · tick#${tickCount} · ${watchdogPhase} · ${elapsed}s`);
-    }, 250);
+    }, 100);
+    const restoreTitle = () => { document.title = originalTitle; };
+    void restoreTitle; // referenced in cleanup below
 
     const runQuery = async () => {
       try {
