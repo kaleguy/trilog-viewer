@@ -706,32 +706,19 @@ export function Metrics({ conn, settings }: Props) {
     let cancelled = false;
     setLoading(true);
 
-    // Debounce + serialize — holding ‹ used to fire six invokes per
-    // click and the parallel load would deadlock the SQL plugin's
-    // IPC. Debounce coalesces rapid clicks into a single query set.
-    const timer = setTimeout(async () => {
-      const breather = () => new Promise((r) => setTimeout(r, 30));
-      try {
-        const dayRows = await getDayEntriesRange(conn, startDateKey, endDateKey);
-        if (cancelled) return;
-        await breather();
-        // Pull one extra day's worth of activity entries before the
-        // window: sleep that starts at 23:00 the night before
-        // windowStart still contributes hours to windowStart's day
-        // after the cross-midnight split.
-        const activities = await getActivityEntries(conn, startMs - MS_PER_DAY, endMs);
-        if (cancelled) return;
-        await breather();
-        const cycles = await getCycleNotes(conn, startMs - 30 * MS_PER_DAY, endMs);
-        if (cancelled) return;
-        await breather();
-        const pomos = await getPomodoroCountsRange(conn, startMs, endMs);
-        if (cancelled) return;
-        await breather();
-        const cals = await getDailyCaloriesRange(conn, startMs, endMs);
-        if (cancelled) return;
-        await breather();
-        const weather = await getHistoricalWeatherRange(conn, startDateKey, endDateKey);
+    Promise.all([
+      getDayEntriesRange(conn, startDateKey, endDateKey),
+      // Pull one extra day's worth of activity entries before the
+      // window: sleep that starts at 23:00 the night before windowStart
+      // still contributes hours to windowStart's day after the
+      // cross-midnight split.
+      getActivityEntries(conn, startMs - MS_PER_DAY, endMs),
+      getCycleNotes(conn, startMs - 30 * MS_PER_DAY, endMs),
+      getPomodoroCountsRange(conn, startMs, endMs),
+      getDailyCaloriesRange(conn, startMs, endMs),
+      getHistoricalWeatherRange(conn, startDateKey, endDateKey),
+    ])
+      .then(([dayRows, activities, cycles, pomos, cals, weather]) => {
         if (cancelled) return;
 
         const dayByKey = new Map(dayRows.map((r) => [r.dateKey, r]));
@@ -754,17 +741,11 @@ export function Metrics({ conn, settings }: Props) {
           });
         }
         setByDate(merged);
-      } catch (err) {
-        console.error('[Metrics] fetch failed', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, 300);
+      })
+      .catch((err) => console.error('[Metrics] fetch failed', err))
+      .finally(() => { if (!cancelled) setLoading(false); });
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    return () => { cancelled = true; };
   }, [conn, days, startMs, endMs, startDateKey, endDateKey]);
 
   // METRICS is in iPhone's `rowLabels` array order, which the iPhone

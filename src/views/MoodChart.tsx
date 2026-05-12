@@ -206,32 +206,19 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
     // phase that started before the visible range still paints its tail.
     const padMs = 2 * MS_PER_DAY;
     const cycleLookbackMs = CYCLE_LOOKBACK_DAYS * MS_PER_DAY;
-    // Debounce + serialize. Holding ‹ piles up many cancelled effects,
-    // each starting six in-flight SQL invokes. Debouncing waits for
-    // the user to settle on a date before firing the queries.
-    const timer = setTimeout(async () => {
-      const breather = () => new Promise((r) => setTimeout(r, 30));
-      try {
-        const m = await getMoodEntries(conn, startMs, endMs);
-        if (cancelled) return;
-        await breather();
-        const e = await getEnergyEntries(conn, startMs, endMs);
-        if (cancelled) return;
-        await breather();
-        const a = await getActivityEntries(conn, startMs - padMs, endMs + padMs);
-        if (cancelled) return;
-        await breather();
-        const n = await getNoteEntries(conn, startMs, endMs);
-        if (cancelled) return;
-        await breather();
-        const c = await getCycleNotes(conn, startMs - cycleLookbackMs, endMs);
-        if (cancelled) return;
-        await breather();
-        const w = await getHistoricalWeatherRange(
-          conn,
-          dateKey(new Date(startMs)),
-          dateKey(new Date(endMs - 1))
-        );
+    Promise.all([
+      getMoodEntries(conn, startMs, endMs),
+      getEnergyEntries(conn, startMs, endMs),
+      getActivityEntries(conn, startMs - padMs, endMs + padMs),
+      getNoteEntries(conn, startMs, endMs),
+      getCycleNotes(conn, startMs - cycleLookbackMs, endMs),
+      getHistoricalWeatherRange(
+        conn,
+        dateKey(new Date(startMs)),
+        dateKey(new Date(endMs - 1))
+      ),
+    ])
+      .then(([m, e, a, n, c, w]) => {
         if (cancelled) return;
         setMoods(m);
         setEnergies(e);
@@ -239,16 +226,12 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
         setNotes(n);
         setCycles(c);
         setWeather(w);
-      } catch (err) {
-        console.error('[MoodChart] query failed', err);
-      } finally {
+      })
+      .catch((err) => console.error('[MoodChart] query failed', err))
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+      });
+    return () => { cancelled = true; };
   }, [conn, startMs, endMs]);
 
   const buckets = useMemo(

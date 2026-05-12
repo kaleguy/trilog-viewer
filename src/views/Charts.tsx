@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
 import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
@@ -51,24 +51,6 @@ function isoWeekNumber(date: Date): number {
 // formats month labels for every visible day; reuse one formatter.
 const MONTH_SHORT_FMT = new Intl.DateTimeFormat(undefined, { month: 'short' });
 
-// Module-level cache so navigating away from Charts and back doesn't
-// re-fire the SQL invokes. tauri-plugin-sql's IPC bridge gets
-// progressively unhealthy across many invokes in a session, so
-// avoiding refetches when the same window is shown is a real
-// stability win, not just a latency one.
-interface ChartsCacheEntry {
-  rowsByDate: Map<string, DayEntryRow>;
-  activityTotals: Map<string, ActivityTotals>;
-}
-const chartsCache = new Map<string, ChartsCacheEntry>();
-function cacheKey(connObj: unknown, startKey: string, endKey: string): string {
-  // The conn object reference is unique per opened DB; using its
-  // identity in the key means re-opening a different DB doesn't
-  // hit a stale cached entry.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const path = (connObj as any)?.path ?? 'unknown';
-  return `${path}|${startKey}|${endKey}`;
-}
 
 /**
  * Single-number mood score (1=worst .. 5=best) from a day_entries
@@ -122,10 +104,6 @@ export function Charts({ conn }: Props) {
   // The crosshair renders as an absolute-positioned overlay (not as an
   // SVG <line>), so updating it doesn't force React to reconcile the
   // thousands of data SVG elements on every mousemove.
-  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
-  const handleHoverIndex = useCallback((i: number | null) => {
-    setHoveredDayIndex((prev) => (prev === i ? prev : i));
-  }, []);
 
   // N weeks of days, ending on `endDate` (a Saturday), starting on
   // the Sunday (N*7 − 1) days earlier. Future days inside the window
@@ -147,51 +125,26 @@ export function Charts({ conn }: Props) {
   const endMs = days[days.length - 1].getTime() + 24 * 60 * 60 * 1000;
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-  const cachedEntry = chartsCache.get(cacheKey(conn, startDateKey, endDateKey));
-  const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(
-    () => cachedEntry?.rowsByDate ?? new Map()
-  );
-  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(
-    () => cachedEntry?.activityTotals ?? new Map()
-  );
+  const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
+  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
 
   useEffect(() => {
-    const key = cacheKey(conn, startDateKey, endDateKey);
-    const hit = chartsCache.get(key);
-    if (hit) {
-      setRowsByDate(hit.rowsByDate);
-      setActivityTotals(hit.activityTotals);
-      return;
-    }
     let cancelled = false;
-    // Debounce by 300ms so a burst of ‹ ‹ ‹ clicks coalesces into
-    // one query (the user's final destination) instead of firing N
-    // serial invokes. Without this, holding the back arrow piles up
-    // dozens of in-flight IPC calls and eventually deadlocks the
-    // tauri-plugin-sql bridge.
-    const timer = setTimeout(async () => {
-      try {
-        const rows = await getDayEntriesRange(conn, startDateKey, endDateKey);
-        if (cancelled) return;
-        await new Promise((r) => setTimeout(r, 50));
-        // Pad activity fetch by ±1 day so cross-midnight entries on
-        // the edges of the window credit the correct cells.
-        const activities = await getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY);
+    Promise.all([
+      getDayEntriesRange(conn, startDateKey, endDateKey),
+      // Pad activity fetch by ±1 day so cross-midnight entries on the
+      // edges of the window credit the correct cells.
+      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
+    ])
+      .then(([rows, activities]) => {
         if (cancelled) return;
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
-        const totals = aggregateActivities(activities);
-        chartsCache.set(key, { rowsByDate: m, activityTotals: totals });
         setRowsByDate(m);
-        setActivityTotals(totals);
-      } catch {
-        /* fall back to empty */
-      }
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+        setActivityTotals(aggregateActivities(activities));
+      })
+      .catch(() => { /* fall back to empty */ });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
 
@@ -223,33 +176,51 @@ export function Charts({ conn }: Props) {
           </button>
         ))}
       </div>
-      <MoodEnergyStrip
+      {/* Diagnostic placeholder — bypasses all SVG rendering so we
+          can isolate whether the freeze-on-‹ comes from the chart
+          render or the underlying SQL/IPC path. Real strips are
+          still defined below; restore them after the test. */}
+      <DateNavPlaceholder
         days={days}
-        rowsByDate={rowsByDate}
         endDate={endDate}
-        onBack={stepBack}
-        onForward={stepForward}
-        hoveredDayIndex={hoveredDayIndex}
-        onHoverIndex={handleHoverIndex}
-      />
-      <SleepStrip
-        days={days}
         rowsByDate={rowsByDate}
-        endDate={endDate}
-        onBack={stepBack}
-        onForward={stepForward}
-        hoveredDayIndex={hoveredDayIndex}
-        onHoverIndex={handleHoverIndex}
-      />
-      <ActivityStrip
-        days={days}
         activityTotals={activityTotals}
-        endDate={endDate}
         onBack={stepBack}
         onForward={stepForward}
-        hoveredDayIndex={hoveredDayIndex}
-        onHoverIndex={handleHoverIndex}
       />
+    </div>
+  );
+}
+
+interface DateNavPlaceholderProps {
+  days: Date[];
+  endDate: Date;
+  rowsByDate: Map<string, DayEntryRow>;
+  activityTotals: Map<string, ActivityTotals>;
+  onBack: () => void;
+  onForward: () => void;
+}
+function DateNavPlaceholder({
+  days, endDate, rowsByDate, activityTotals, onBack, onForward,
+}: DateNavPlaceholderProps) {
+  return (
+    <div style={{ padding: 24, color: '#888' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <button type="button" onClick={onBack} aria-label="Previous week">‹</button>
+        <span>Week {isoWeekNumber(endDate)}</span>
+        <button type="button" onClick={onForward} aria-label="Next week">›</button>
+      </div>
+      <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, lineHeight: 1.6 }}>
+        <div>days: {days.length}</div>
+        <div>range: {dateKey(days[0])} → {dateKey(days[days.length - 1])}</div>
+        <div>rowsByDate entries: {rowsByDate.size}</div>
+        <div>activityTotals entries: {activityTotals.size}</div>
+      </div>
+      <div style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
+        Diagnostic: chart strips disabled. SQL queries still fire on
+        every date change. If ‹ still freezes the app, the freeze is
+        in the SQL/IPC path, not the SVG rendering.
+      </div>
     </div>
   );
 }
@@ -1067,3 +1038,10 @@ function ActivityStrip({
     </section>
   );
 }
+
+
+// Diagnostic stub: strip components are unused while the placeholder
+// is active. Reference them here so TypeScript keeps them around.
+void MoodEnergyStrip;
+void SleepStrip;
+void ActivityStrip;
