@@ -130,18 +130,26 @@ export function Charts({ conn }: Props) {
         onBack={stepBack}
         onForward={stepForward}
       />
-      {/* More chart strips will live below this one. */}
+      <SleepStrip
+        days={days}
+        rowsByDate={rowsByDate}
+        endDate={endDate}
+        onBack={stepBack}
+        onForward={stepForward}
+      />
     </div>
   );
 }
 
-interface MoodEnergyStripProps {
+interface StripProps {
   days: Date[];
   rowsByDate: Map<string, DayEntryRow>;
   endDate: Date;
   onBack: () => void;
   onForward: () => void;
 }
+
+type MoodEnergyStripProps = StripProps;
 
 const VBOX_W = 200; // SVG viewBox width — proportional, scales to container.
                     // Bumped up to keep individual columns narrow enough
@@ -156,7 +164,7 @@ const PAD_BOTTOM = 4;
 
 const MOOD_LINE_COLOR = '#00DD66';
 const ENERGY_LINE_COLOR = '#FFCC44';
-const WELLNESS_LINE_COLOR = '#5AC8FA';
+const WELLNESS_LINE_COLOR = '#FFFFFF';
 
 /** Color a continuous mood score 1..5 using the iPhone mood palette.
  *  Round to the nearest integer position to pick a single color
@@ -167,10 +175,10 @@ function moodColorForScore(score: number): string {
   return MOOD_COLORS[MOOD_POSITION_NAMES[idx]];
 }
 
-/** Wellness dot colors — same red→green progression the iPhone uses
- *  for the wellness icons in WeekView (Thermometer/Pill/Bandage/
- *  Heart/HeartPulse). */
-const WELLNESS_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#8BC34A', '#34C759'];
+/** Generic 1-5 rating palette (red bad → green good). Reused by
+ *  sleep-quality bar coloring; wellness dots are uniform white now
+ *  so they don't read as the same series as mood. */
+const RATING_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#8BC34A', '#34C759'];
 
 function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodEnergyStripProps) {
   const [showMood, setShowMood] = useState(true);
@@ -366,7 +374,7 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
               cx={p.x}
               cy={p.y}
               r={0.55}
-              fill={WELLNESS_COLORS[Math.max(0, Math.min(4, Math.round(p.level) - 1))]}
+              fill={WELLNESS_LINE_COLOR}
               vectorEffect="non-scaling-stroke"
             >
               <title>
@@ -436,6 +444,172 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
 
         {/* Day-of-week strip beneath the chart. Show date numbers on
             the 1st of each month so the calendar reads. */}
+        <div className="chart-day-row">
+          {days.map((d, i) => {
+            const isFirstOfMonth = d.getDate() === 1;
+            const isToday = startOfLocalDay(d).getTime() === todayMs;
+            return (
+              <div
+                key={i}
+                className={`chart-day-cell${isToday ? ' today' : ''}`}
+                title={d.toLocaleDateString(undefined, {
+                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                })}
+              >
+                {isFirstOfMonth && (
+                  <div className="chart-day-month">
+                    {d.toLocaleDateString(undefined, { month: 'short' })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+// ---- Sleep strip -----------------------------------------------------------
+
+const SLEEP_Y_MAX = 10; // hours; gridlines at 4, 6, 8
+
+/**
+ * Total sleep hours for a day. Prefer HealthKit's hkSleepDuration
+ * (in minutes), fall back to the manually-logged sleepDurationHours
+ * + sleepDurationMinutes pair. Returns null when neither is set.
+ */
+function dailySleepHours(row: DayEntryRow): number | null {
+  if (row.hkSleepDuration != null && row.hkSleepDuration > 0) {
+    return row.hkSleepDuration / 60;
+  }
+  if (row.sleepDurationHours != null && row.sleepDurationHours > 0) {
+    return row.sleepDurationHours + (row.sleepDurationMinutes ?? 0) / 60;
+  }
+  return null;
+}
+
+function SleepStrip({ days, rowsByDate, endDate, onBack, onForward }: StripProps) {
+  const colW = (VBOX_W - 2 * PAD_X) / days.length;
+  const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
+  const BAR_GAP = 0.15; // viewBox units between bars
+
+  function xFor(i: number): number { return PAD_X + colW * i; }
+  function yForHours(h: number): number {
+    const clamped = Math.min(h, SLEEP_Y_MAX);
+    return PAD_TOP + plotH * (1 - clamped / SLEEP_Y_MAX);
+  }
+  function heightForHours(h: number): number {
+    const clamped = Math.min(h, SLEEP_Y_MAX);
+    return plotH * (clamped / SLEEP_Y_MAX);
+  }
+
+  const bars = days.map((d, i) => {
+    const row = rowsByDate.get(dateKey(d));
+    if (!row) return null;
+    const hours = dailySleepHours(row);
+    if (hours == null) return null;
+    const quality = row.sleepQuality;
+    const color = quality != null && quality >= 1 && quality <= 5
+      ? RATING_COLORS[quality - 1]
+      : '#6B7280';
+    return {
+      i,
+      x: xFor(i) + BAR_GAP / 2,
+      y: yForHours(hours),
+      width: colW - BAR_GAP,
+      height: heightForHours(hours),
+      color,
+      hours,
+      quality,
+    };
+  }).filter((b): b is NonNullable<typeof b> => b !== null);
+
+  const todayMs = startOfLocalDay(new Date()).getTime();
+
+  return (
+    <section className="chart-strip">
+      <header className="chart-strip-head">
+        <h3 className="chart-strip-title">Sleep</h3>
+        <div className="chart-strip-legend">
+          {[1, 2, 3, 4, 5].map((q) => (
+            <span key={q} className="chart-legend-item" style={{ cursor: 'default' }}>
+              <span className="chart-legend-dot" style={{ background: RATING_COLORS[q - 1] }} />
+              {q}
+            </span>
+          ))}
+        </div>
+        <div className="chart-strip-nav">
+          <button type="button" onClick={onBack} aria-label="Previous week">‹</button>
+          <span className="chart-strip-range">Week {isoWeekNumber(endDate)}</span>
+          <button type="button" onClick={onForward} aria-label="Next week">›</button>
+        </div>
+      </header>
+
+      <div className="chart-strip-body">
+        <svg
+          className="chart-svg"
+          viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Sleep duration per day, bars colored by quality"
+        >
+          {[4, 6, 8].map((h) => (
+            <line
+              key={h}
+              x1={PAD_X}
+              x2={VBOX_W - PAD_X}
+              y1={yForHours(h)}
+              y2={yForHours(h)}
+              className="chart-grid-line"
+            />
+          ))}
+
+          {days.map((d, i) => (
+            d.getDay() === 0 && i !== 0 ? (
+              <line
+                key={`wk-${i}`}
+                x1={PAD_X + colW * i}
+                x2={PAD_X + colW * i}
+                y1={PAD_TOP}
+                y2={PAD_TOP + plotH}
+                className="chart-week-line"
+              />
+            ) : null
+          ))}
+
+          {(() => {
+            const todayIdx = days.findIndex((d) => startOfLocalDay(d).getTime() === todayMs);
+            if (todayIdx < 0) return null;
+            return (
+              <line
+                x1={xFor(todayIdx) + colW / 2}
+                x2={xFor(todayIdx) + colW / 2}
+                y1={PAD_TOP}
+                y2={PAD_TOP + plotH}
+                className="chart-today-line"
+              />
+            );
+          })()}
+
+          {bars.map((b) => (
+            <rect
+              key={`sleep-${b.i}`}
+              x={b.x}
+              y={b.y}
+              width={b.width}
+              height={b.height}
+              fill={b.color}
+              rx={0.1}
+            >
+              <title>
+                {`${days[b.i].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} — ${b.hours.toFixed(1)}h${b.quality != null ? `, quality ${b.quality}` : ''}`}
+              </title>
+            </rect>
+          ))}
+        </svg>
+
         <div className="chart-day-row">
           {days.map((d, i) => {
             const isFirstOfMonth = d.getDate() === 1;

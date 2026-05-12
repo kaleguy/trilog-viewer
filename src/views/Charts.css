@@ -4,6 +4,11 @@
   height: 100%;
   color: #f0f0f0;
   gap: 12px;
+  overflow-y: auto;
+}
+
+.chart-strip {
+  flex-shrink: 0;
 }
 
 .chart-strip {
@@ -108,11 +113,12 @@
 }
 
 .chart-wellness-line {
-  stroke: #5AC8FA;
-  stroke-width: 1.6;
+  stroke: #FFFFFF;
+  stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
+  opacity: 0.85;
 }
 
 .chart-strip-legend {
