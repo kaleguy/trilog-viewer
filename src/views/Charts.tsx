@@ -51,6 +51,25 @@ function isoWeekNumber(date: Date): number {
 // formats month labels for every visible day; reuse one formatter.
 const MONTH_SHORT_FMT = new Intl.DateTimeFormat(undefined, { month: 'short' });
 
+// Module-level cache so navigating away from Charts and back doesn't
+// re-fire the SQL invokes. tauri-plugin-sql's IPC bridge gets
+// progressively unhealthy across many invokes in a session, so
+// avoiding refetches when the same window is shown is a real
+// stability win, not just a latency one.
+interface ChartsCacheEntry {
+  rowsByDate: Map<string, DayEntryRow>;
+  activityTotals: Map<string, ActivityTotals>;
+}
+const chartsCache = new Map<string, ChartsCacheEntry>();
+function cacheKey(connObj: unknown, startKey: string, endKey: string): string {
+  // The conn object reference is unique per opened DB; using its
+  // identity in the key means re-opening a different DB doesn't
+  // hit a stale cached entry.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const path = (connObj as any)?.path ?? 'unknown';
+  return `${path}|${startKey}|${endKey}`;
+}
+
 /**
  * Single-number mood score (1=worst .. 5=best) from a day_entries
  * row. Prefers the newer 5-tuple `moodValues` ([upset, anxious, sad,
@@ -122,16 +141,28 @@ export function Charts({ conn }: Props) {
     return list;
   }, [endDate, windowWeeks]);
 
-  const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
-  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
-
   const startDateKey = dateKey(days[0]);
   const endDateKey = dateKey(days[days.length - 1]);
   const startMs = days[0].getTime();
   const endMs = days[days.length - 1].getTime() + 24 * 60 * 60 * 1000;
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+  const cachedEntry = chartsCache.get(cacheKey(conn, startDateKey, endDateKey));
+  const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(
+    () => cachedEntry?.rowsByDate ?? new Map()
+  );
+  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(
+    () => cachedEntry?.activityTotals ?? new Map()
+  );
+
   useEffect(() => {
+    const key = cacheKey(conn, startDateKey, endDateKey);
+    const hit = chartsCache.get(key);
+    if (hit) {
+      setRowsByDate(hit.rowsByDate);
+      setActivityTotals(hit.activityTotals);
+      return;
+    }
     let cancelled = false;
     Promise.all([
       getDayEntriesRange(conn, startDateKey, endDateKey),
@@ -143,8 +174,10 @@ export function Charts({ conn }: Props) {
         if (cancelled) return;
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
+        const totals = aggregateActivities(activities);
+        chartsCache.set(key, { rowsByDate: m, activityTotals: totals });
         setRowsByDate(m);
-        setActivityTotals(aggregateActivities(activities));
+        setActivityTotals(totals);
       })
       .catch(() => { /* fall back to empty */ });
     return () => { cancelled = true; };
