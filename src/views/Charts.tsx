@@ -1,6 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -92,6 +92,34 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
   return null;
 }
 
+// Fetch ALL day_entries + ALL activity_entries once per opened DB.
+// Date navigation then slices in memory — zero SQL invokes after
+// the initial fetch, so the tauri-plugin-sql IPC bridge doesn't
+// accumulate selects across the session.
+const WIDE_START = '1970-01-01';
+const WIDE_END = '2099-12-31';
+const WIDE_MS = 4102444800000; // 2100-01-01 in ms
+
+interface ChartsBundle {
+  rowsByDate: Map<string, DayEntryRow>;
+  activities: ActivityEntry[];
+}
+const chartsBundleCache = new WeakMap<object, Promise<ChartsBundle>>();
+
+function loadChartsBundle(conn: Conn_): Promise<ChartsBundle> {
+  const cached = chartsBundleCache.get(conn as unknown as object);
+  if (cached) return cached;
+  const p = (async () => {
+    const rows = await getDayEntriesRange(conn, WIDE_START, WIDE_END);
+    const activities = await getActivityEntries(conn, 0, WIDE_MS);
+    const rowsByDate = new Map<string, DayEntryRow>();
+    for (const r of rows) rowsByDate.set(r.dateKey, r);
+    return { rowsByDate, activities };
+  })();
+  chartsBundleCache.set(conn as unknown as object, p);
+  return p;
+}
+
 export function Charts({ conn }: Props) {
   const [endDate, setEndDate] = useState<Date>(() => thisOrNextSaturday(new Date()));
   const [windowWeeks, setWindowWeeks] = useState<number>(DEFAULT_WEEKS);
@@ -99,11 +127,13 @@ export function Charts({ conn }: Props) {
   // Shared crosshair index — when the mouse hovers any strip, every
   // strip in the column draws a vertical line at the same day so the
   // user can sight-read across (energy dot ↔ sleep bar for the same
-  // date). `null` = no hover.
-  //
-  // The crosshair renders as an absolute-positioned overlay (not as an
-  // SVG <line>), so updating it doesn't force React to reconcile the
-  // thousands of data SVG elements on every mousemove.
+  // date). `null` = no hover. Rendered as a CSS overlay (not an SVG
+  // <line>) so hover updates don't force React to reconcile the data
+  // SVGs.
+  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  const handleHoverIndex = useCallback((i: number | null) => {
+    setHoveredDayIndex((prev) => (prev === i ? prev : i));
+  }, []);
 
   // N weeks of days, ending on `endDate` (a Saturday), starting on
   // the Sunday (N*7 − 1) days earlier. Future days inside the window
@@ -119,34 +149,48 @@ export function Charts({ conn }: Props) {
     return list;
   }, [endDate, windowWeeks]);
 
-  const startDateKey = dateKey(days[0]);
-  const endDateKey = dateKey(days[days.length - 1]);
   const startMs = days[0].getTime();
   const endMs = days[days.length - 1].getTime() + 24 * 60 * 60 * 1000;
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-  const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(new Map());
-  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(new Map());
-
+  // Bundle = all DB data fetched once. Date navigation slices from
+  // it in memory.
+  const [bundle, setBundle] = useState<ChartsBundle | null>(null);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getDayEntriesRange(conn, startDateKey, endDateKey),
-      // Pad activity fetch by ±1 day so cross-midnight entries on the
-      // edges of the window credit the correct cells.
-      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
-    ])
-      .then(([rows, activities]) => {
-        if (cancelled) return;
-        const m = new Map<string, DayEntryRow>();
-        for (const r of rows) m.set(r.dateKey, r);
-        setRowsByDate(m);
-        setActivityTotals(aggregateActivities(activities));
-      })
-      .catch(() => { /* fall back to empty */ });
+    loadChartsBundle(conn).then((b) => {
+      if (cancelled) return;
+      setBundle(b);
+    });
     return () => { cancelled = true; };
+  }, [conn]);
+
+  // Slice the bundle for the visible window. Cheap pure compute,
+  // no SQL.
+  const rowsByDate = useMemo(() => {
+    if (!bundle) return new Map<string, DayEntryRow>();
+    const out = new Map<string, DayEntryRow>();
+    for (const d of days) {
+      const k = dateKey(d);
+      const row = bundle.rowsByDate.get(k);
+      if (row) out.set(k, row);
+    }
+    return out;
+  }, [bundle, days]);
+
+  const activityTotals = useMemo(() => {
+    if (!bundle) return new Map<string, ActivityTotals>();
+    const padStart = startMs - MS_PER_DAY;
+    const padEnd = endMs + MS_PER_DAY;
+    // The full activity list is already timestamp-sorted at the SQL
+    // layer, but slicing by binary search would over-engineer this —
+    // a single pass is plenty fast for a year's worth of rows.
+    const filtered = bundle.activities.filter(
+      (a) => a.timestamp >= padStart && a.timestamp < padEnd,
+    );
+    return aggregateActivities(filtered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn, startDateKey, endDateKey]);
+  }, [bundle, startMs, endMs]);
 
   const stepBack = () => {
     const d = new Date(endDate);
@@ -175,52 +219,39 @@ export function Charts({ conn }: Props) {
             {opt.label}
           </button>
         ))}
+        {!bundle && (
+          <span style={{ marginLeft: 12, fontSize: 11, color: '#888' }}>
+            loading…
+          </span>
+        )}
       </div>
-      {/* Diagnostic placeholder — bypasses all SVG rendering so we
-          can isolate whether the freeze-on-‹ comes from the chart
-          render or the underlying SQL/IPC path. Real strips are
-          still defined below; restore them after the test. */}
-      <DateNavPlaceholder
+      <MoodEnergyStrip
         days={days}
-        endDate={endDate}
         rowsByDate={rowsByDate}
-        activityTotals={activityTotals}
+        endDate={endDate}
         onBack={stepBack}
         onForward={stepForward}
+        hoveredDayIndex={hoveredDayIndex}
+        onHoverIndex={handleHoverIndex}
       />
-    </div>
-  );
-}
-
-interface DateNavPlaceholderProps {
-  days: Date[];
-  endDate: Date;
-  rowsByDate: Map<string, DayEntryRow>;
-  activityTotals: Map<string, ActivityTotals>;
-  onBack: () => void;
-  onForward: () => void;
-}
-function DateNavPlaceholder({
-  days, endDate, rowsByDate, activityTotals, onBack, onForward,
-}: DateNavPlaceholderProps) {
-  return (
-    <div style={{ padding: 24, color: '#888' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <button type="button" onClick={onBack} aria-label="Previous week">‹</button>
-        <span>Week {isoWeekNumber(endDate)}</span>
-        <button type="button" onClick={onForward} aria-label="Next week">›</button>
-      </div>
-      <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, lineHeight: 1.6 }}>
-        <div>days: {days.length}</div>
-        <div>range: {dateKey(days[0])} → {dateKey(days[days.length - 1])}</div>
-        <div>rowsByDate entries: {rowsByDate.size}</div>
-        <div>activityTotals entries: {activityTotals.size}</div>
-      </div>
-      <div style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
-        Diagnostic: chart strips disabled. SQL queries still fire on
-        every date change. If ‹ still freezes the app, the freeze is
-        in the SQL/IPC path, not the SVG rendering.
-      </div>
+      <SleepStrip
+        days={days}
+        rowsByDate={rowsByDate}
+        endDate={endDate}
+        onBack={stepBack}
+        onForward={stepForward}
+        hoveredDayIndex={hoveredDayIndex}
+        onHoverIndex={handleHoverIndex}
+      />
+      <ActivityStrip
+        days={days}
+        activityTotals={activityTotals}
+        endDate={endDate}
+        onBack={stepBack}
+        onForward={stepForward}
+        hoveredDayIndex={hoveredDayIndex}
+        onHoverIndex={handleHoverIndex}
+      />
     </div>
   );
 }
@@ -1038,10 +1069,3 @@ function ActivityStrip({
     </section>
   );
 }
-
-
-// Diagnostic stub: strip components are unused while the placeholder
-// is active. Reference them here so TypeScript keeps them around.
-void MoodEnergyStrip;
-void SleepStrip;
-void ActivityStrip;
