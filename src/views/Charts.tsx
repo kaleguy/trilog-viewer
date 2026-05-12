@@ -78,6 +78,12 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
 export function Charts({ conn }: Props) {
   const [endDate, setEndDate] = useState<Date>(() => thisOrNextSaturday(new Date()));
 
+  // Shared crosshair index — when the mouse hovers any strip, every
+  // strip in the column draws a vertical line at the same day so the
+  // user can sight-read across (energy dot ↔ sleep bar for the same
+  // date). `null` = no hover.
+  const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+
   // 12 weeks of days, ending on `endDate` (a Saturday), starting on
   // the Sunday 83 days earlier. Future days inside the window render
   // as blank columns.
@@ -129,6 +135,8 @@ export function Charts({ conn }: Props) {
         endDate={endDate}
         onBack={stepBack}
         onForward={stepForward}
+        hoveredDayIndex={hoveredDayIndex}
+        onHoverIndex={setHoveredDayIndex}
       />
       <SleepStrip
         days={days}
@@ -136,6 +144,8 @@ export function Charts({ conn }: Props) {
         endDate={endDate}
         onBack={stepBack}
         onForward={stepForward}
+        hoveredDayIndex={hoveredDayIndex}
+        onHoverIndex={setHoveredDayIndex}
       />
     </div>
   );
@@ -147,9 +157,32 @@ interface StripProps {
   endDate: Date;
   onBack: () => void;
   onForward: () => void;
+  hoveredDayIndex: number | null;
+  onHoverIndex: (i: number | null) => void;
 }
 
 type MoodEnergyStripProps = StripProps;
+
+/**
+ * Translate a mouse event over the chart body into a day-index.
+ * Subtracts the SVG's viewBox PAD_X so the calculation lines up with
+ * where dots are actually drawn.
+ */
+function dayIndexFromMouse(
+  event: React.MouseEvent<HTMLElement>,
+  dayCount: number,
+): number | null {
+  const rect = event.currentTarget.getBoundingClientRect();
+  if (rect.width <= 0) return null;
+  const xPx = event.clientX - rect.left;
+  // Convert pixel x → viewBox x using the same VBOX_W / PAD_X math
+  // the strips use.
+  const vboxX = (xPx / rect.width) * VBOX_W;
+  const colW = (VBOX_W - 2 * PAD_X) / dayCount;
+  const i = Math.floor((vboxX - PAD_X) / colW);
+  if (i < 0 || i >= dayCount) return null;
+  return i;
+}
 
 const VBOX_W = 200; // SVG viewBox width — proportional, scales to container.
                     // Bumped up to keep individual columns narrow enough
@@ -180,7 +213,9 @@ function moodColorForScore(score: number): string {
  *  so they don't read as the same series as mood. */
 const RATING_COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#8BC34A', '#34C759'];
 
-function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodEnergyStripProps) {
+function MoodEnergyStrip({
+  days, rowsByDate, endDate, onBack, onForward, hoveredDayIndex, onHoverIndex,
+}: MoodEnergyStripProps) {
   const [showMood, setShowMood] = useState(true);
   const [showEnergy, setShowEnergy] = useState(true);
   const [showWellness, setShowWellness] = useState(true);
@@ -306,13 +341,17 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
         </div>
       </header>
 
-      <div className="chart-strip-body">
+      <div
+        className="chart-strip-body"
+        onMouseMove={(e) => onHoverIndex(dayIndexFromMouse(e, days.length))}
+        onMouseLeave={() => onHoverIndex(null)}
+      >
         <svg
           className="chart-svg"
           viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
           preserveAspectRatio="none"
           role="img"
-          aria-label="Energy levels for the last 12 weeks"
+          aria-label="Mood, energy and wellness for the last 24 weeks"
         >
           {/* Subtle horizontal gridlines at every integer energy level */}
           {[1, 2, 3, 4, 5].map((lvl) => (
@@ -355,8 +394,21 @@ function MoodEnergyStrip({ days, rowsByDate, endDate, onBack, onForward }: MoodE
             );
           })()}
 
-          {/* Wellness paints first — cyan line, iPhone wellness
-              palette dots (red→green per level 1..5). */}
+          {/* Crosshair — shared between strips so the user can line
+              up values across charts for the same day. */}
+          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
+            <line
+              x1={xFor(hoveredDayIndex)}
+              x2={xFor(hoveredDayIndex)}
+              y1={PAD_TOP}
+              y2={PAD_TOP + plotH}
+              className="chart-cursor-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {/* Wellness paints first — white line, white dots so it
+              doesn't compete with mood-green. */}
           {showWellness && wellnessSegments.map((s, i) => (
             <line
               key={`well-seg-${i}`}
@@ -490,7 +542,9 @@ function dailySleepHours(row: DayEntryRow): number | null {
   return null;
 }
 
-function SleepStrip({ days, rowsByDate, endDate, onBack, onForward }: StripProps) {
+function SleepStrip({
+  days, rowsByDate, endDate, onBack, onForward, hoveredDayIndex, onHoverIndex,
+}: StripProps) {
   const colW = (VBOX_W - 2 * PAD_X) / days.length;
   const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
   const BAR_GAP = 0.15; // viewBox units between bars
@@ -547,7 +601,11 @@ function SleepStrip({ days, rowsByDate, endDate, onBack, onForward }: StripProps
         </div>
       </header>
 
-      <div className="chart-strip-body">
+      <div
+        className="chart-strip-body"
+        onMouseMove={(e) => onHoverIndex(dayIndexFromMouse(e, days.length))}
+        onMouseLeave={() => onHoverIndex(null)}
+      >
         <svg
           className="chart-svg"
           viewBox={`0 0 ${VBOX_W} ${VBOX_H}`}
@@ -592,6 +650,20 @@ function SleepStrip({ days, rowsByDate, endDate, onBack, onForward }: StripProps
               />
             );
           })()}
+
+          {/* Shared crosshair — `xFor` in this strip returns the
+              column's left edge, so add half-col to center on the
+              same day as the MoodEnergy strip's dot. */}
+          {hoveredDayIndex != null && hoveredDayIndex >= 0 && hoveredDayIndex < days.length && (
+            <line
+              x1={xFor(hoveredDayIndex) + colW / 2}
+              x2={xFor(hoveredDayIndex) + colW / 2}
+              y1={PAD_TOP}
+              y2={PAD_TOP + plotH}
+              className="chart-cursor-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
 
           {bars.map((b) => (
             <rect

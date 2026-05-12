@@ -96,6 +96,13 @@
   opacity: 0.5;
 }
 
+.chart-cursor-line {
+  stroke: #ffffff;
+  stroke-width: 1;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .chart-energy-line {
   stroke: #FFCC44;
   stroke-width: 1.6;
