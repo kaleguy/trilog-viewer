@@ -145,6 +145,17 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
 
   const [visibility, setVisibility] = useState<VisibilityState>('all');
   const [showNotes, setShowNotes] = useState(true);
+  const [selectedNote, setSelectedNote] = useState<NoteEntry | null>(null);
+
+  // Close note popup on Escape.
+  useEffect(() => {
+    if (!selectedNote) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedNote(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedNote]);
   const [endDate, setEndDate] = useState<Date>(() => startOfLocalDay(new Date()));
   const [moods, setMoods] = useState<MoodEntry[]>([]);
   const [energies, setEnergies] = useState<EnergyEntry[]>([]);
@@ -308,7 +319,54 @@ export function MoodChart({ conn, settings, viewerSettings }: Props) {
         showMoonPhases={viewerSettings.showMoonPhases}
         cycleByDate={cycleByDate}
         weatherByDate={weatherByDate}
+        onNoteClick={setSelectedNote}
       />
+
+      {/* Note popup — click a marker in the chart to open. Click the
+          backdrop, the close button, or press Esc to dismiss. */}
+      {selectedNote && (
+        <NotePopup note={selectedNote} onClose={() => setSelectedNote(null)} />
+      )}
+    </div>
+  );
+}
+
+interface NotePopupProps {
+  note: NoteEntry;
+  onClose: () => void;
+}
+
+function NotePopup({ note, onClose }: NotePopupProps) {
+  // Pick a human label + accent color matching the marker icon.
+  let kind = 'Note';
+  let accent = '#9CA3AF';
+  if (note.isCycle) { kind = 'Cycle'; accent = '#FF6B9D'; }
+  else if (note.isMeal) { kind = 'Meal'; accent = '#FF9500'; }
+  else if (note.isHealth) { kind = 'Health'; accent = '#34C759'; }
+  else if (/\{tracking:/i.test(note.text || '') || /^@/.test(note.text || '')) { kind = 'Tracker'; accent = '#4A90C2'; }
+
+  const dt = new Date(note.timestamp);
+  const dateLine = dt.toLocaleDateString(undefined, {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+  const timeLine = dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+  return (
+    <div className="note-popup-overlay" onClick={onClose}>
+      <div className="note-popup" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="note-popup-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="note-popup-header">
+          <span className="note-popup-kind" style={{ background: accent }}>{kind}</span>
+          <div className="note-popup-time">
+            <div className="note-popup-date">{dateLine}</div>
+            <div className="note-popup-clock">{timeLine}</div>
+          </div>
+        </div>
+        <div className="note-popup-body">{note.text}</div>
+        {note.calories != null && note.calories > 0 && (
+          <div className="note-popup-meta">{note.calories} kcal</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -324,6 +382,7 @@ interface ChartGridProps {
   showMoonPhases: boolean;
   cycleByDate: Map<string, string>;
   weatherByDate: Map<string, HistoricalWeather>;
+  onNoteClick: (note: NoteEntry) => void;
 }
 
 const HOUR_LABELS = [3, 6, 9, 12, 15, 18, 21, 24];
@@ -348,6 +407,7 @@ function labelTransform(h: number): string {
 function ChartGrid({
   buckets, showMood, showEnergy, showActivity, showNotes,
   showCycles, showWeather, showMoonPhases, cycleByDate, weatherByDate,
+  onNoteClick,
 }: ChartGridProps) {
   const visibleCount = (showMood ? 1 : 0) + (showEnergy ? 1 : 0) + (showActivity ? 1 : 0);
   const subColumns = Math.max(visibleCount, 1);
@@ -405,6 +465,7 @@ function ChartGrid({
               weatherRowH={weatherH}
               cycleRowH={cycleH}
               moonRowH={moonH}
+              onNoteClick={onNoteClick}
             />
           ))}
           {/* Reference lines pinned to the day-track area only. Stop them
@@ -437,12 +498,13 @@ interface DayColumnProps {
   weatherRowH: number;
   cycleRowH: number;
   moonRowH: number;
+  onNoteClick: (note: NoteEntry) => void;
 }
 
 function DayColumn({
   bucket, isToday, showMood, showEnergy, showActivity, showNotes,
   subColumns, minWidth, weather, cycleColorHex,
-  weatherRowH, cycleRowH, moonRowH,
+  weatherRowH, cycleRowH, moonRowH, onNoteClick,
 }: DayColumnProps) {
   const { date } = bucket;
   const dayStart = startOfLocalDay(date).getTime();
@@ -527,6 +589,7 @@ function DayColumn({
                 note={n}
                 top={yPct(n.timestamp)}
                 circular={subColumns > 1}
+                onClick={() => onNoteClick(n)}
               />
             ))}
           </div>
@@ -599,6 +662,7 @@ interface NoteMarkerProps {
   note: NoteEntry;
   top: number;
   circular: boolean;
+  onClick?: () => void;
 }
 
 /**
@@ -606,7 +670,7 @@ interface NoteMarkerProps {
  * an icon picked from the note's type flags. Tracking notes get a square
  * background to match the iOS chart's visual distinction.
  */
-function NoteMarker({ note, top, circular }: NoteMarkerProps) {
+function NoteMarker({ note, top, circular, onClick }: NoteMarkerProps) {
   // White marker always; the icon shape is the differentiator.
   let Icon = FileText;
   if (note.isCycle) Icon = Droplet;
@@ -615,12 +679,14 @@ function NoteMarker({ note, top, circular }: NoteMarkerProps) {
   else if (/\{tracking:/i.test(note.text || '') || /^@/.test(note.text || '')) Icon = BarChart3;
 
   return (
-    <div
+    <button
+      type="button"
       className={`note-marker ${circular ? 'circular' : ''}`}
       style={{ top: `${top}%` }}
-      title={`${new Date(note.timestamp).toLocaleTimeString()} — ${note.text}`}
+      title={`${new Date(note.timestamp).toLocaleTimeString()} — click to read`}
+      onClick={onClick}
     >
       <Icon size={13} strokeWidth={2.4} />
-    </div>
+    </button>
   );
 }

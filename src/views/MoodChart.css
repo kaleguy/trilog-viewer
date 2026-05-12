@@ -332,6 +332,8 @@
   width: 16px;
   height: 16px;
   border-radius: 3px;
+  border: none;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -339,6 +341,7 @@
   pointer-events: auto;
   background: #ffffff;
   color: #111;
+  cursor: pointer;
 }
 
 .note-marker.circular {
@@ -348,6 +351,113 @@
 .note-marker:hover {
   transform: translate(-50%, -50%) scale(1.4);
   z-index: 6;
+}
+
+/* Note popup — click a marker to read full text */
+.note-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 24px;
+  animation: notePopupFade 0.12s ease-out;
+}
+
+@keyframes notePopupFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.note-popup {
+  position: relative;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px 22px 22px;
+  width: 440px;
+  max-width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  color: #f0f0f0;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+
+.note-popup-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 22px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.note-popup-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.note-popup-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.note-popup-kind {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.note-popup-time {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+.note-popup-date {
+  font-size: 13px;
+  color: #aaa;
+}
+.note-popup-clock {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f0f0;
+  margin-top: 2px;
+}
+
+.note-popup-body {
+  font-size: 15px;
+  line-height: 1.55;
+  color: #e8e8e8;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.note-popup-meta {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  color: #aaa;
 }
 
 .day-footer {
