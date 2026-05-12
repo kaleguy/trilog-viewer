@@ -133,39 +133,46 @@ export function Charts({ conn }: Props) {
     let cancelled = false;
     const tStart = performance.now();
     console.log(`[charts] effect fired window=${windowWeeks}w range=${startDateKey}..${endDateKey}`);
-    setPerf(`${windowWeeks}w · fetching…`);
-    const tQueryStart = performance.now();
-    Promise.all([
-      getDayEntriesRange(conn, startDateKey, endDateKey),
-      // Pad activity fetch by ±1 day so cross-midnight entries on the
-      // edges of the window credit the correct cells.
-      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
-    ])
-      .then(([rows, activities]) => {
-        if (cancelled) return;
-        const tQueryEnd = performance.now();
-        console.log(`[charts] query done rows=${rows.length} activities=${activities.length} dur=${(tQueryEnd - tQueryStart).toFixed(0)}ms`);
+    setPerf(`${windowWeeks}w · 1/5 querying day_entries…`);
+    const tQ1Start = performance.now();
+    // Query day_entries first, separately, so the toolbar can show
+    // where we get stuck (each phase updates the perf string before
+    // moving on).
+    getDayEntriesRange(conn, startDateKey, endDateKey)
+      .then((rows) => {
+        if (cancelled) return null;
+        const tQ1End = performance.now();
+        console.log(`[charts] day_entries done rows=${rows.length} dur=${(tQ1End - tQ1Start).toFixed(0)}ms`);
+        setPerf(`${windowWeeks}w · 2/5 day_entries ${(tQ1End - tQ1Start).toFixed(0)}ms (${rows.length} rows) · querying activities…`);
+        const tQ2Start = performance.now();
+        return getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY)
+          .then((activities) => ({ rows, activities, tQ1End, tQ2Start }));
+      })
+      .then((result) => {
+        if (cancelled || !result) return;
+        const { rows, activities, tQ1End, tQ2Start } = result;
+        const tQ2End = performance.now();
+        console.log(`[charts] activities done rows=${activities.length} dur=${(tQ2End - tQ2Start).toFixed(0)}ms`);
+        setPerf(`${windowWeeks}w · 3/5 activities ${(tQ2End - tQ2Start).toFixed(0)}ms (${activities.length} rows) · building map…`);
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
         const tMapEnd = performance.now();
         const totals = aggregateActivities(activities);
         const tAggEnd = performance.now();
         console.log(`[charts] aggregated dur=${(tAggEnd - tMapEnd).toFixed(0)}ms`);
+        setPerf(`${windowWeeks}w · 4/5 agg ${(tAggEnd - tMapEnd).toFixed(0)}ms · committing state…`);
         setRowsByDate(m);
         setActivityTotals(totals);
         console.log(`[charts] state set, awaiting React commit`);
-        // Defer the render-time measurement to the next frame so we
-        // catch React commit + browser layout cost.
         requestAnimationFrame(() => {
           const tDone = performance.now();
           console.log(`[charts] rendered, total=${(tDone - tStart).toFixed(0)}ms`);
           setPerf(
-            `${windowWeeks}w · ` +
-            `query ${(tQueryEnd - tQueryStart).toFixed(0)}ms · ` +
-            `map ${(tMapEnd - tQueryEnd).toFixed(0)}ms · ` +
-            `agg ${(tAggEnd - tMapEnd).toFixed(0)}ms · ` +
-            `render ${(tDone - tAggEnd).toFixed(0)}ms · ` +
-            `rows ${rows.length}/${activities.length} · ` +
+            `${windowWeeks}w · 5/5 done · ` +
+            `q1 ${(tQ1End - tQ1Start).toFixed(0)} · ` +
+            `q2 ${(tQ2End - tQ2Start).toFixed(0)} · ` +
+            `agg ${(tAggEnd - tMapEnd).toFixed(0)} · ` +
+            `render ${(tDone - tAggEnd).toFixed(0)} · ` +
             `total ${(tDone - tStart).toFixed(0)}ms`
           );
         });
