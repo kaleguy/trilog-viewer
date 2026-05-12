@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -133,42 +133,69 @@ export function Charts({ conn }: Props) {
     let cancelled = false;
     const tStart = performance.now();
     console.log(`[charts] effect fired window=${windowWeeks}w range=${startDateKey}..${endDateKey}`);
-    setPerf(`${windowWeeks}w · 1/5 querying day_entries…`);
-    const tQ1Start = performance.now();
-    // Query day_entries first, separately, so the toolbar can show
-    // where we get stuck (each phase updates the perf string before
-    // moving on).
-    getDayEntriesRange(conn, startDateKey, endDateKey)
-      .then((rows) => {
-        if (cancelled) return null;
+
+    // Watchdog: every 500ms, if we're still in the loading sequence,
+    // update the toolbar with elapsed time. If JS is alive but stuck
+    // awaiting IPC, the user will see the counter tick. If the user
+    // sees nothing change, JS itself is blocked.
+    let watchdogPhase = '?';
+    const watchdog = setInterval(() => {
+      if (cancelled) return;
+      const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
+      setPerf(`${windowWeeks}w · ${watchdogPhase} · ${elapsed}s elapsed`);
+    }, 500);
+
+    const runQuery = async () => {
+      try {
+        watchdogPhase = '1/5 querying day_entries…';
+        const tQ1Start = performance.now();
+        const rows = await getDayEntriesRange(conn, startDateKey, endDateKey);
+        if (cancelled) return;
         const tQ1End = performance.now();
         console.log(`[charts] day_entries done rows=${rows.length} dur=${(tQ1End - tQ1Start).toFixed(0)}ms`);
-        setPerf(`${windowWeeks}w · 2/5 day_entries ${(tQ1End - tQ1Start).toFixed(0)}ms (${rows.length} rows) · querying activities…`);
+
+        // Chunk activity_entries into 4 quarter-year queries, run
+        // serially. If the single-call query was hanging on payload
+        // size or some per-call limit, smaller chunks should sail.
+        const allActivities: ActivityEntry[] = [];
+        const totalMs = (endMs + MS_PER_DAY) - (startMs - MS_PER_DAY);
+        const CHUNKS = 4;
         const tQ2Start = performance.now();
-        return getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY)
-          .then((activities) => ({ rows, activities, tQ1End, tQ2Start }));
-      })
-      .then((result) => {
-        if (cancelled || !result) return;
-        const { rows, activities, tQ1End, tQ2Start } = result;
+        for (let i = 0; i < CHUNKS; i++) {
+          const chunkStart = (startMs - MS_PER_DAY) + (totalMs * i) / CHUNKS;
+          const chunkEnd = (startMs - MS_PER_DAY) + (totalMs * (i + 1)) / CHUNKS;
+          watchdogPhase = `2/5 activities chunk ${i + 1}/${CHUNKS}…`;
+          const tChunkStart = performance.now();
+          const chunk = await getActivityEntries(conn, chunkStart, chunkEnd);
+          const tChunkEnd = performance.now();
+          console.log(`[charts] activity chunk ${i + 1}/${CHUNKS} rows=${chunk.length} dur=${(tChunkEnd - tChunkStart).toFixed(0)}ms`);
+          if (cancelled) return;
+          allActivities.push(...chunk);
+        }
         const tQ2End = performance.now();
-        console.log(`[charts] activities done rows=${activities.length} dur=${(tQ2End - tQ2Start).toFixed(0)}ms`);
-        setPerf(`${windowWeeks}w · 3/5 activities ${(tQ2End - tQ2Start).toFixed(0)}ms (${activities.length} rows) · building map…`);
+        console.log(`[charts] all activity chunks done total=${allActivities.length} dur=${(tQ2End - tQ2Start).toFixed(0)}ms`);
+
+        watchdogPhase = '3/5 building map…';
         const m = new Map<string, DayEntryRow>();
         for (const r of rows) m.set(r.dateKey, r);
         const tMapEnd = performance.now();
-        const totals = aggregateActivities(activities);
+
+        watchdogPhase = '4/5 aggregating…';
+        const totals = aggregateActivities(allActivities);
         const tAggEnd = performance.now();
         console.log(`[charts] aggregated dur=${(tAggEnd - tMapEnd).toFixed(0)}ms`);
-        setPerf(`${windowWeeks}w · 4/5 agg ${(tAggEnd - tMapEnd).toFixed(0)}ms · committing state…`);
+
+        watchdogPhase = '5/5 committing…';
         setRowsByDate(m);
         setActivityTotals(totals);
         console.log(`[charts] state set, awaiting React commit`);
+
         requestAnimationFrame(() => {
+          clearInterval(watchdog);
           const tDone = performance.now();
           console.log(`[charts] rendered, total=${(tDone - tStart).toFixed(0)}ms`);
           setPerf(
-            `${windowWeeks}w · 5/5 done · ` +
+            `${windowWeeks}w · done · ` +
             `q1 ${(tQ1End - tQ1Start).toFixed(0)} · ` +
             `q2 ${(tQ2End - tQ2Start).toFixed(0)} · ` +
             `agg ${(tAggEnd - tMapEnd).toFixed(0)} · ` +
@@ -176,12 +203,18 @@ export function Charts({ conn }: Props) {
             `total ${(tDone - tStart).toFixed(0)}ms`
           );
         });
-      })
-      .catch((err) => {
+      } catch (err) {
+        clearInterval(watchdog);
         console.error('[charts] fetch error', err);
         setPerf(`${windowWeeks}w · error: ${String(err).slice(0, 80)}`);
-      });
-    return () => { cancelled = true; };
+      }
+    };
+    runQuery();
+
+    return () => {
+      cancelled = true;
+      clearInterval(watchdog);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, startDateKey, endDateKey]);
 
