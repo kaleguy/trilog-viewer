@@ -7,7 +7,7 @@ interface Props {
   conn: Conn_;
 }
 
-const WEEKS = 12;
+const WEEKS = 24;
 const DAYS = WEEKS * 7;
 
 function startOfLocalDay(date: Date): Date {
@@ -143,13 +143,16 @@ interface MoodEnergyStripProps {
   onForward: () => void;
 }
 
-const VBOX_W = 100; // SVG viewBox width — proportional, scales to container
-const VBOX_H = 28;  // viewBox height; aspect feels right at ~3.5:1
+const VBOX_W = 200; // SVG viewBox width — proportional, scales to container.
+                    // Bumped up to keep individual columns narrow enough
+                    // that 168-day series doesn't visually crowd at the
+                    // dot diameter we use below.
+const VBOX_H = 28;
 const Y_MIN = 1;
 const Y_MAX = 5;
-const PAD_X = 1;    // leave a touch of room so dots near the edges don't clip
+const PAD_X = 1;
 const PAD_TOP = 2;
-const PAD_BOTTOM = 4; // room for day-of-week strip
+const PAD_BOTTOM = 4;
 
 const MOOD_LINE_COLOR = '#00DD66';
 const ENERGY_LINE_COLOR = '#FFCC44';

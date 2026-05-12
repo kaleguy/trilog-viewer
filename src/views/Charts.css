@@ -9,7 +9,7 @@
 .chart-strip {
   display: flex;
   flex-direction: column;
-  max-height: 400px;
+  height: 240px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   background: #050505;
@@ -154,10 +154,10 @@
 /* Day-of-week strip beneath the chart. Each cell is one day wide. */
 .chart-day-row {
   display: grid;
-  grid-template-columns: repeat(84, 1fr);
-  height: 18px;
+  grid-template-columns: repeat(168, 1fr);
+  height: 16px;
   margin-top: 4px;
-  padding: 0 calc(100% / 100); /* mirrors the SVG's PAD_X */
+  padding: 0 calc(100% / 200); /* mirrors the SVG's PAD_X / VBOX_W ratio */
 }
 
 .chart-day-cell {
