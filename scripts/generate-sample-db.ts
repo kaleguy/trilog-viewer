@@ -25,7 +25,9 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const OUT_PATH = resolve(__dirname, '../samples/sample-journal.db');
-const DAYS = 52 * 7; // exactly 52 weeks for clean Sun-anchored alignment
+const DAYS = 104 * 7; // 2 years — lets us test whether freezes happen
+                       //   at a fixed click count (cumulative IPC pressure)
+                       //   or only at the data boundary.
 
 // -- deterministic PRNG so successive runs produce identical output
 let _seed = 0xc0ffee;

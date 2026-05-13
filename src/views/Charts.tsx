@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { getActivityEntries, type Conn_ } from '../db/queries';
+import { getActivityEntries, getEnergyEntries, getMoodEntries, type Conn_ } from '../db/queries';
 import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
@@ -103,23 +103,75 @@ interface ChartsWindowData {
 }
 const windowCache = new Map<string, ChartsWindowData>();
 
-// Trimmed day_entries query — only the columns Charts actually reads.
-// The default getDayEntriesRange returns 25 columns including four
-// fat JSON-blob columns (pressureData / pollenData / airQualityData
-// / uvData) that the strips never touch.
-async function fetchChartsDayEntries(
-  conn: Conn_,
-  startDateKey: string,
-  endDateKey: string,
-): Promise<DayEntryRow[]> {
-  return conn.select<DayEntryRow[]>(
-    `SELECT dateKey, mood, moodValues, energy, wellnessLevel,
-            sleepQuality, sleepDurationHours, sleepDurationMinutes,
-            hkSleepDuration
-     FROM day_entries
-     WHERE dateKey >= ? AND dateKey <= ?`,
-    [startDateKey, endDateKey],
-  );
+// Diagnostic build: Charts is the only view that freezes on long
+// navigation, and the only one querying day_entries. Skip day_entries
+// entirely and derive mood + energy + sleep from the same tables
+// MoodChart uses (which the user confirms never freezes). We lose
+// the wellness line and sleep-quality bar colors; if this stops the
+// freeze, day_entries is confirmed as the toxic query.
+function deriveDayEntriesFromMoodEnergy(
+  moods: { timestamp: number; type: string }[],
+  energies: { timestamp: number; level: number }[],
+  sleepHoursByDate: Map<string, number>,
+): Map<string, DayEntryRow> {
+  const out = new Map<string, DayEntryRow>();
+  // Group moods + energies by local-day dateKey.
+  const moodsByDay = new Map<string, string[]>();
+  for (const m of moods) {
+    const k = dateKey(new Date(m.timestamp));
+    let arr = moodsByDay.get(k);
+    if (!arr) { arr = []; moodsByDay.set(k, arr); }
+    arr.push(m.type);
+  }
+  const energiesByDay = new Map<string, number[]>();
+  for (const e of energies) {
+    const k = dateKey(new Date(e.timestamp));
+    let arr = energiesByDay.get(k);
+    if (!arr) { arr = []; energiesByDay.set(k, arr); }
+    arr.push(e.level);
+  }
+  const allKeys = new Set<string>();
+  for (const k of moodsByDay.keys()) allKeys.add(k);
+  for (const k of energiesByDay.keys()) allKeys.add(k);
+  for (const k of sleepHoursByDate.keys()) allKeys.add(k);
+  for (const k of allKeys) {
+    const dayMoods = moodsByDay.get(k) ?? [];
+    const dayEnergies = energiesByDay.get(k) ?? [];
+    // Dominant mood = most frequent for that day. moodValues as a
+    // 5-tuple of counts so the proportional bar math in the strips
+    // still works.
+    const counts: Record<string, number> = {};
+    for (const m of dayMoods) counts[m] = (counts[m] ?? 0) + 1;
+    let dominant: string | null = null;
+    let dominantCount = 0;
+    for (const [t, n] of Object.entries(counts)) {
+      if (n > dominantCount) { dominantCount = n; dominant = t; }
+    }
+    const moodValues = JSON.stringify([
+      counts.upset ?? 0,
+      counts.anxious ?? 0,
+      counts.sad ?? 0,
+      counts.neutral ?? 0,
+      counts.happy ?? 0,
+    ]);
+    const avgEnergy = dayEnergies.length
+      ? Math.round(dayEnergies.reduce((s, x) => s + x, 0) / dayEnergies.length)
+      : null;
+    const sleepHrs = sleepHoursByDate.get(k);
+    out.set(k, {
+      dateKey: k,
+      mood: dominant,
+      moodValues,
+      energy: avgEnergy,
+      wellnessLevel: null,
+      onLevel: null,
+      sleepQuality: null,
+      sleepDurationHours: sleepHrs != null ? Math.floor(sleepHrs) : null,
+      sleepDurationMinutes: sleepHrs != null ? Math.round((sleepHrs % 1) * 60) : null,
+      hkSleepDuration: null,
+    } as unknown as DayEntryRow);
+  }
+  return out;
 }
 
 export function Charts({ conn }: Props) {
@@ -174,18 +226,26 @@ export function Charts({ conn }: Props) {
       return;
     }
     let cancelled = false;
-    // Mirror MoodChart's pattern: parallel Promise.all of the two
-    // window-scoped queries. Each payload is small (the user
-    // confirms MoodChart never freezes with this pattern).
+    // Diagnostic: use only the tables MoodChart uses (no day_entries).
+    // If this stops the freeze, day_entries queries are confirmed
+    // as the culprit, and we'll add a one-time wellness/sleep fetch
+    // later from a single bounded query.
     Promise.all([
-      fetchChartsDayEntries(conn, startDateKey, endDateKey),
+      getMoodEntries(conn, startMs, endMs),
+      getEnergyEntries(conn, startMs, endMs),
       getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
     ])
-      .then(([rows, activities]) => {
+      .then(([moods, energies, activities]) => {
         if (cancelled) return;
-        const m = new Map<string, DayEntryRow>();
-        for (const r of rows) m.set(r.dateKey, r);
         const totals = aggregateActivities(activities);
+        // Per-day sleep hours from activity_entries so we can keep
+        // the sleep strip alive without day_entries.
+        const sleepHoursByDate = new Map<string, number>();
+        for (const [k, t] of totals) {
+          const sleep = t.byType.get('sleep');
+          if (sleep != null) sleepHoursByDate.set(k, sleep);
+        }
+        const m = deriveDayEntriesFromMoodEnergy(moods, energies, sleepHoursByDate);
         windowCache.set(winKey, { rowsByDate: m, activityTotals: totals });
         setRowsByDate(m);
         setActivityTotals(totals);
