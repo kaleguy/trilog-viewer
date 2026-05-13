@@ -12,6 +12,7 @@ const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
   { weeks: 4, label: '4w' },
   { weeks: 12, label: '12w' },
   { weeks: 24, label: '24w' },
+  { weeks: 52, label: '1y' },
 ];
 const DEFAULT_WEEKS = 24;
 
