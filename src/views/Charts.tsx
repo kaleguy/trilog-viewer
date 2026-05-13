@@ -286,10 +286,16 @@ export function Charts({ conn }: Props) {
           {formatRange(days[0], days[days.length - 1])}
         </span>
         <button className="chart-nav-btn" type="button" onClick={stepForward} aria-label="Next month">›</button>
-        <span style={{ marginLeft: 12, fontSize: 11, color: '#888' }}>
+        <span style={{ marginLeft: 12, fontSize: 11, color: '#888', fontFamily: 'ui-monospace, monospace' }}>
           {loading && 'Loading…'}
           {error && `Error: ${error}`}
-          {!loading && !error && `${visibleMoodDays}/${moodBarsByDate.size} days`}
+          {!loading && !error && (
+            <>
+              {visibleMoodDays}/{moodBarsByDate.size} mood ·{' '}
+              {activities.length} acts ·{' '}
+              {activityTotals.size} act-days
+            </>
+          )}
         </span>
       </div>
 
