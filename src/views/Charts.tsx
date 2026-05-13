@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -92,55 +92,34 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
   return null;
 }
 
-// Load all day_entries + activity_entries ONCE per opened DB, chunked
-// month-by-month with breathers so the tauri-plugin-sql IPC bridge
-// doesn't choke on a single SELECT * over the activity table. After
-// this initial load, date navigation is entirely in-memory.
-const MONTH_MS = 31 * 24 * 60 * 60 * 1000;
-
-interface ChartsBundle {
+// Per-window fetch (matches MoodChart's pattern, which the user
+// confirms doesn't freeze). The previous "fetch the whole year at
+// once" approach hit the tauri-plugin-sql IPC's payload threshold;
+// this stays small per-call. Same-window revisits are free via the
+// module-level cache.
+interface ChartsWindowData {
   rowsByDate: Map<string, DayEntryRow>;
   activityTotals: Map<string, ActivityTotals>;
 }
-const chartsBundleCache = new WeakMap<object, Promise<ChartsBundle>>();
+const windowCache = new Map<string, ChartsWindowData>();
 
-function loadChartsBundle(conn: Conn_): Promise<ChartsBundle> {
-  const cached = chartsBundleCache.get(conn as unknown as object);
-  if (cached) return cached;
-  const p = (async () => {
-    const breather = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    // 1) day_entries: only the columns the strips actually read.
-    //    The default getDayEntriesRange returns 25 columns including
-    //    four fat JSON-blob columns (pressureData/pollenData/
-    //    airQualityData/uvData) the chart strips don't use — at 360
-    //    rows that's a ~300KB IPC payload that chokes the bridge.
-    //    Slim down to what we need: ~10 small fields, <50KB total.
-    const rows = await conn.select<DayEntryRow[]>(
-      `SELECT dateKey, mood, moodValues, energy, wellnessLevel,
-              sleepQuality, sleepDurationHours, sleepDurationMinutes,
-              hkSleepDuration
-       FROM day_entries`,
-    );
-    await breather(100);
-    // 2) activity_entries: chunk by month for the last 13 months.
-    //    Each chunk returns ~200 rows max — small payload, no IPC
-    //    backlog. 13 months covers any 1y view ending today.
-    const now = Date.now();
-    const allActivities: ActivityEntry[] = [];
-    for (let i = 0; i < 13; i++) {
-      const chunkEnd = now - i * MONTH_MS + MONTH_MS;
-      const chunkStart = chunkEnd - MONTH_MS - 2 * 24 * 60 * 60 * 1000; // 2-day pad
-      const chunk = await getActivityEntries(conn, chunkStart, chunkEnd);
-      allActivities.push(...chunk);
-      if (i < 12) await breather(150);
-    }
-    const rowsByDate = new Map<string, DayEntryRow>();
-    for (const r of rows) rowsByDate.set(r.dateKey, r);
-    const activityTotals = aggregateActivities(allActivities);
-    return { rowsByDate, activityTotals };
-  })();
-  chartsBundleCache.set(conn as unknown as object, p);
-  return p;
+// Trimmed day_entries query — only the columns Charts actually reads.
+// The default getDayEntriesRange returns 25 columns including four
+// fat JSON-blob columns (pressureData / pollenData / airQualityData
+// / uvData) that the strips never touch.
+async function fetchChartsDayEntries(
+  conn: Conn_,
+  startDateKey: string,
+  endDateKey: string,
+): Promise<DayEntryRow[]> {
+  return conn.select<DayEntryRow[]>(
+    `SELECT dateKey, mood, moodValues, energy, wellnessLevel,
+            sleepQuality, sleepDurationHours, sleepDurationMinutes,
+            hkSleepDuration
+     FROM day_entries
+     WHERE dateKey >= ? AND dateKey <= ?`,
+    [startDateKey, endDateKey],
+  );
 }
 
 export function Charts({ conn }: Props) {
@@ -172,22 +151,49 @@ export function Charts({ conn }: Props) {
     return list;
   }, [endDate, windowWeeks]);
 
-  // Bundle = all DB data fetched + aggregated once. Date navigation
-  // is just rendering different windows of the same maps.
-  const [bundle, setBundle] = useState<ChartsBundle | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    loadChartsBundle(conn).then((b) => {
-      if (cancelled) return;
-      setBundle(b);
-    });
-    return () => { cancelled = true; };
-  }, [conn]);
+  const startDateKey = dateKey(days[0]);
+  const endDateKey = dateKey(days[days.length - 1]);
+  const startMs = days[0].getTime();
+  const endMs = days[days.length - 1].getTime() + 24 * 60 * 60 * 1000;
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-  const EMPTY_ROWS = useMemo(() => new Map<string, DayEntryRow>(), []);
-  const EMPTY_TOTALS = useMemo(() => new Map<string, ActivityTotals>(), []);
-  const rowsByDate = bundle?.rowsByDate ?? EMPTY_ROWS;
-  const activityTotals = bundle?.activityTotals ?? EMPTY_TOTALS;
+  const winKey = `${startDateKey}|${endDateKey}`;
+  const cached = windowCache.get(winKey);
+  const [rowsByDate, setRowsByDate] = useState<Map<string, DayEntryRow>>(
+    () => cached?.rowsByDate ?? new Map(),
+  );
+  const [activityTotals, setActivityTotals] = useState<Map<string, ActivityTotals>>(
+    () => cached?.activityTotals ?? new Map(),
+  );
+
+  useEffect(() => {
+    const hit = windowCache.get(winKey);
+    if (hit) {
+      setRowsByDate(hit.rowsByDate);
+      setActivityTotals(hit.activityTotals);
+      return;
+    }
+    let cancelled = false;
+    // Mirror MoodChart's pattern: parallel Promise.all of the two
+    // window-scoped queries. Each payload is small (the user
+    // confirms MoodChart never freezes with this pattern).
+    Promise.all([
+      fetchChartsDayEntries(conn, startDateKey, endDateKey),
+      getActivityEntries(conn, startMs - MS_PER_DAY, endMs + MS_PER_DAY),
+    ])
+      .then(([rows, activities]) => {
+        if (cancelled) return;
+        const m = new Map<string, DayEntryRow>();
+        for (const r of rows) m.set(r.dateKey, r);
+        const totals = aggregateActivities(activities);
+        windowCache.set(winKey, { rowsByDate: m, activityTotals: totals });
+        setRowsByDate(m);
+        setActivityTotals(totals);
+      })
+      .catch(() => { /* leave previous data on error */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conn, winKey]);
 
   const stepBack = () => {
     const d = new Date(endDate);
@@ -216,11 +222,6 @@ export function Charts({ conn }: Props) {
             {opt.label}
           </button>
         ))}
-        {!bundle && (
-          <span style={{ marginLeft: 12, fontSize: 11, color: '#888' }}>
-            loading…
-          </span>
-        )}
       </div>
       <MoodEnergyStrip
         days={days}
