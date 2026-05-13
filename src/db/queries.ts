@@ -117,38 +117,58 @@ export async function getDayEntriesRange(
   startDateKey: string,
   endDateKey: string
 ): Promise<DayEntryRow[]> {
+  // Split into two parallel queries: a slim numeric/short-string core
+  // and a separate blobs-only fetch. The JSON-blob columns
+  // (pressureData / pollenData / airQualityData / uvData) more than
+  // double the per-row payload, and at typical window sizes the
+  // combined single SELECT crosses the tauri-plugin-sql IPC's
+  // payload threshold and deadlocks the bridge. Two smaller payloads
+  // in parallel stay below the threshold each.
+  //
   // `screenTimeMinutes` and `hkDietaryCalories` are recent
-  // migrations. Some older bundles won't have those columns — fall
-  // back to the legacy column list if SELECTing them errors out, so
-  // the rest of the metrics still load.
-  try {
-    return await conn.select<DayEntryRow[]>(
-      `SELECT
-         dateKey, mood, moodValues, energy, onLevel, wellnessLevel,
-         steps, restingHeartRate, avgBodyWeight, hrv,
-         sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
-         sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
-         hkSleepDuration, hkDeepSleep, hkRemSleep, screenTimeMinutes,
-         hkDietaryCalories,
-         pressureData, pollenData, airQualityData, uvData
-       FROM day_entries
-       WHERE dateKey >= ? AND dateKey <= ?`,
-      [startDateKey, endDateKey]
-    );
-  } catch {
-    return conn.select<DayEntryRow[]>(
-      `SELECT
-         dateKey, mood, moodValues, energy, onLevel, wellnessLevel,
-         steps, restingHeartRate, avgBodyWeight, hrv,
-         sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
-         sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
-         hkSleepDuration, hkDeepSleep, hkRemSleep,
-         pressureData, pollenData, airQualityData, uvData
-       FROM day_entries
-       WHERE dateKey >= ? AND dateKey <= ?`,
-      [startDateKey, endDateKey]
-    );
-  }
+  // migrations — fall back to the legacy column list if SELECTing
+  // them errors out.
+  const coreQuery = async (): Promise<Partial<DayEntryRow>[]> => {
+    try {
+      return await conn.select<Partial<DayEntryRow>[]>(
+        `SELECT
+           dateKey, mood, moodValues, energy, onLevel, wellnessLevel,
+           steps, restingHeartRate, avgBodyWeight, hrv,
+           sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
+           sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
+           hkSleepDuration, hkDeepSleep, hkRemSleep, screenTimeMinutes,
+           hkDietaryCalories
+         FROM day_entries
+         WHERE dateKey >= ? AND dateKey <= ?`,
+        [startDateKey, endDateKey]
+      );
+    } catch {
+      return conn.select<Partial<DayEntryRow>[]>(
+        `SELECT
+           dateKey, mood, moodValues, energy, onLevel, wellnessLevel,
+           steps, restingHeartRate, avgBodyWeight, hrv,
+           sleepQuality, sleepOnset, sleepWakeFeel, sleepWakeUps,
+           sleepDurationHours, sleepDurationMinutes, sleepInsomniaMinutes,
+           hkSleepDuration, hkDeepSleep, hkRemSleep
+         FROM day_entries
+         WHERE dateKey >= ? AND dateKey <= ?`,
+        [startDateKey, endDateKey]
+      );
+    }
+  };
+  const blobQuery = (): Promise<Partial<DayEntryRow>[]> => conn.select<Partial<DayEntryRow>[]>(
+    `SELECT dateKey, pressureData, pollenData, airQualityData, uvData
+     FROM day_entries
+     WHERE dateKey >= ? AND dateKey <= ?`,
+    [startDateKey, endDateKey]
+  );
+  const [core, blobs] = await Promise.all([coreQuery(), blobQuery()]);
+  const blobByKey = new Map<string, Partial<DayEntryRow>>();
+  for (const b of blobs) if (b.dateKey) blobByKey.set(b.dateKey, b);
+  return core.map((r) => ({
+    ...r,
+    ...(r.dateKey ? blobByKey.get(r.dateKey) : undefined),
+  })) as DayEntryRow[];
 }
 
 /**
