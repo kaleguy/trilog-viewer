@@ -12,10 +12,12 @@ interface RawRow {
   moodValues: string | null;
 }
 
-interface DayPoint {
+interface DayBars {
   dateKey: string;
   ts: number;
-  weighted: number;
+  // 5-tuple of mood counts: [upset, anxious, sad, neutral, happy]
+  counts: number[];
+  total: number;
 }
 
 const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
@@ -25,22 +27,15 @@ const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
 ];
 const DEFAULT_WEEKS = 24;
 
-// Plot padding in real pixels, not viewBox units.
-const PAD_LEFT = 68;
-const PAD_RIGHT = 24;
-const PAD_TOP = 18;
+const PAD_LEFT = 16;
+const PAD_RIGHT = 16;
+const PAD_TOP = 14;
 const PAD_BOTTOM = 32;
-const Y_MIN = 1;
-const Y_MAX = 5;
 
-const MOOD_LINE_COLOR = '#34D67A';
-const MOOD_LINE_FILL = 'rgba(52, 214, 122, 0.10)';
-const MOOD_POSITION_NAMES = ['upset', 'anxious', 'sad', 'neutral', 'happy'] as const;
+// Order in the stack from bottom→top: upset → anxious → sad → neutral → happy.
+// "Good mood" reads as taller green at the top of the bar.
+const MOOD_KEYS = ['upset', 'anxious', 'sad', 'neutral', 'happy'] as const;
 const MOOD_LABELS = ['Upset', 'Anxious', 'Sad', 'Neutral', 'Happy'] as const;
-function moodColorForScore(score: number): string {
-  const idx = Math.max(0, Math.min(4, Math.round(score) - 1));
-  return MOOD_COLORS[MOOD_POSITION_NAMES[idx]];
-}
 
 function dateKey(d: Date): string {
   const y = d.getFullYear();
@@ -100,8 +95,11 @@ export function Charts({ conn }: Props) {
     return () => { cancelled = true; };
   }, [conn]);
 
-  const allPoints: DayPoint[] = useMemo(() => {
-    const out: DayPoint[] = [];
+  // Parse moodValues once. We keep the raw 5-tuple counts; the bar
+  // stacks normalize per-day, but the absolute counts are also kept
+  // in case we want absolute heights later.
+  const allBars = useMemo(() => {
+    const out: DayBars[] = [];
     for (const r of rows) {
       if (!r.moodValues) continue;
       let arr: number[] | null = null;
@@ -110,27 +108,19 @@ export function Charts({ conn }: Props) {
         if (Array.isArray(parsed) && parsed.length === 5) arr = parsed as number[];
       } catch { continue; }
       if (!arr) continue;
-      let num = 0;
-      let denom = 0;
-      for (let i = 0; i < 5; i++) {
-        const v = arr[i];
-        if (typeof v === 'number' && v > 0) {
-          num += (i + 1) * v;
-          denom += v;
-        }
-      }
-      if (denom === 0) continue;
-      const score = Math.max(1, Math.min(5, num / denom));
-      out.push({ dateKey: r.dateKey, ts: parseDateKey(r.dateKey), weighted: score });
+      const counts = arr.map((v) => (typeof v === 'number' && v > 0 ? v : 0));
+      const total = counts.reduce((s, v) => s + v, 0);
+      if (total === 0) continue;
+      out.push({ dateKey: r.dateKey, ts: parseDateKey(r.dateKey), counts, total });
     }
     return out;
   }, [rows]);
 
-  const pointsByDate = useMemo(() => {
-    const m = new Map<string, DayPoint>();
-    for (const p of allPoints) m.set(p.dateKey, p);
+  const barsByDate = useMemo(() => {
+    const m = new Map<string, DayBars>();
+    for (const b of allBars) m.set(b.dateKey, b);
     return m;
-  }, [allPoints]);
+  }, [allBars]);
 
   const days = useMemo(() => {
     const dayCount = windowWeeks * 7;
@@ -143,19 +133,10 @@ export function Charts({ conn }: Props) {
     return list;
   }, [endDate, windowWeeks]);
 
-  const visiblePoints = useMemo(() => {
-    const out: DayPoint[] = [];
-    for (const d of days) {
-      const p = pointsByDate.get(dateKey(d));
-      if (p) out.push(p);
-    }
-    return out;
-  }, [days, pointsByDate]);
-
   const monthTicks = useMemo(() => {
-    const out: { ts: number; label: string }[] = [];
-    for (const d of days) {
-      if (d.getDate() === 1) out.push({ ts: d.getTime(), label: MONTH_FMT.format(d) });
+    const out: { idx: number; label: string }[] = [];
+    for (let i = 0; i < days.length; i++) {
+      if (days[i].getDate() === 1) out.push({ idx: i, label: MONTH_FMT.format(days[i]) });
     }
     return out;
   }, [days]);
@@ -172,8 +153,6 @@ export function Charts({ conn }: Props) {
     setEndDate(d > cap ? cap : d);
   };
 
-  // Measure the plot container so coordinates can be in real pixels
-  // — no preserveAspectRatio="none" distortion.
   const plotRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 1000, h: 320 });
   useLayoutEffect(() => {
@@ -194,33 +173,25 @@ export function Charts({ conn }: Props) {
   const { w, h } = size;
   const plotW = w - PAD_LEFT - PAD_RIGHT;
   const plotH = h - PAD_TOP - PAD_BOTTOM;
-  const windowStartMs = days[0].getTime();
-  const windowEndMs = days[days.length - 1].getTime();
-  const windowRangeMs = Math.max(1, windowEndMs - windowStartMs);
+  const colW = plotW / days.length;
+  const barGap = Math.min(2, colW * 0.18); // breathing room between bars
+  const barW = Math.max(1, colW - barGap);
 
-  const xFor = (ts: number) => PAD_LEFT + ((ts - windowStartMs) / windowRangeMs) * plotW;
-  const yFor = (level: number) => {
-    const t = (level - Y_MIN) / (Y_MAX - Y_MIN);
-    return PAD_TOP + (1 - t) * plotH;
-  };
+  const visibleBars = useMemo(() => {
+    const out: { i: number; bar: DayBars }[] = [];
+    for (let i = 0; i < days.length; i++) {
+      const bar = barsByDate.get(dateKey(days[i]));
+      if (bar) out.push({ i, bar });
+    }
+    return out;
+  }, [days, barsByDate]);
 
-  const linePath = useMemo(() => {
-    if (visiblePoints.length === 0) return '';
-    return visiblePoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(p.ts).toFixed(2)} ${yFor(p.weighted).toFixed(2)}`).join(' ');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visiblePoints, w, h, windowStartMs, windowEndMs]);
+  const todayIdx = useMemo(() => {
+    const t = startOfLocalDay(new Date()).getTime();
+    return days.findIndex((d) => startOfLocalDay(d).getTime() === t);
+  }, [days]);
 
-  const areaPath = useMemo(() => {
-    if (visiblePoints.length < 2) return '';
-    const baseY = PAD_TOP + plotH;
-    const firstX = xFor(visiblePoints[0].ts).toFixed(2);
-    const lastX = xFor(visiblePoints[visiblePoints.length - 1].ts).toFixed(2);
-    return `${linePath} L${lastX} ${baseY.toFixed(2)} L${firstX} ${baseY.toFixed(2)} Z`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linePath, visiblePoints, w, h]);
-
-  const todayMs = startOfLocalDay(new Date()).getTime();
-  const todayInWindow = todayMs >= windowStartMs && todayMs <= windowEndMs;
+  const visibleDays = visibleBars.length;
 
   return (
     <div style={{
@@ -248,7 +219,7 @@ export function Charts({ conn }: Props) {
         <span style={{ marginLeft: 16, fontSize: 12, color: '#888' }}>
           {loading && 'Loading…'}
           {error && `Error: ${error}`}
-          {!loading && !error && `${visiblePoints.length} of ${allPoints.length} days`}
+          {!loading && !error && `${visibleDays} of ${allBars.length} days`}
         </span>
       </div>
 
@@ -267,6 +238,7 @@ export function Charts({ conn }: Props) {
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 10,
+          gap: 12,
         }}>
           <h3 style={{
             margin: 0,
@@ -275,7 +247,27 @@ export function Charts({ conn }: Props) {
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
             color: '#ccc',
-          }}>Mood</h3>
+          }}>Mood Mix</h3>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 11,
+            color: '#aaa',
+          }}>
+            {MOOD_KEYS.map((k, i) => (
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <span style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: 2,
+                  background: MOOD_COLORS[k],
+                  display: 'inline-block',
+                }} />
+                {MOOD_LABELS[i]}
+              </span>
+            ))}
+          </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <button className="chart-nav-btn" type="button" onClick={stepBack} aria-label="Previous month">‹</button>
             <span style={{
@@ -296,97 +288,84 @@ export function Charts({ conn }: Props) {
             height={h}
             style={{ display: 'block', pointerEvents: 'none' }}
           >
-            {/* Y-axis gridlines + labels */}
-            {[1, 2, 3, 4, 5].map((lvl) => (
-              <g key={lvl}>
-                <line
-                  x1={PAD_LEFT}
-                  x2={w - PAD_RIGHT}
-                  y1={yFor(lvl)}
-                  y2={yFor(lvl)}
-                  stroke="rgba(255,255,255,0.06)"
-                  strokeDasharray={lvl === 3 ? undefined : '3 4'}
-                />
-                <text
-                  x={PAD_LEFT - 10}
-                  y={yFor(lvl) + 4}
-                  fill="#888"
-                  fontSize={11}
-                  textAnchor="end"
-                  fontWeight={lvl === 1 || lvl === 5 ? 600 : 400}
-                >
-                  {MOOD_LABELS[lvl - 1]}
-                </text>
-              </g>
+            {/* Horizontal gridlines at quarters */}
+            {[0.25, 0.5, 0.75].map((frac) => (
+              <line
+                key={frac}
+                x1={PAD_LEFT}
+                x2={w - PAD_RIGHT}
+                y1={PAD_TOP + plotH * frac}
+                y2={PAD_TOP + plotH * frac}
+                stroke="rgba(255,255,255,0.04)"
+                strokeDasharray="3 4"
+              />
             ))}
             {/* Month tick marks + labels */}
-            {monthTicks.map((t) => (
-              <g key={t.ts}>
-                <line
-                  x1={xFor(t.ts)}
-                  x2={xFor(t.ts)}
-                  y1={PAD_TOP}
-                  y2={PAD_TOP + plotH}
-                  stroke="rgba(255,255,255,0.05)"
-                />
-                <text
-                  x={xFor(t.ts)}
-                  y={h - 10}
-                  fill="#999"
-                  fontSize={10}
-                  fontWeight={600}
-                  textAnchor="middle"
-                  style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}
-                >
-                  {t.label}
-                </text>
-              </g>
-            ))}
+            {monthTicks.map((t) => {
+              const x = PAD_LEFT + colW * t.idx;
+              return (
+                <g key={t.label + t.idx}>
+                  <line
+                    x1={x}
+                    x2={x}
+                    y1={PAD_TOP}
+                    y2={PAD_TOP + plotH}
+                    stroke="rgba(255,255,255,0.06)"
+                  />
+                  <text
+                    x={x}
+                    y={h - 10}
+                    fill="#999"
+                    fontSize={10}
+                    fontWeight={600}
+                    textAnchor="middle"
+                    style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}
+                  >
+                    {t.label}
+                  </text>
+                </g>
+              );
+            })}
             {/* Today marker */}
-            {todayInWindow && (
+            {todayIdx >= 0 && (
               <line
-                x1={xFor(todayMs)}
-                x2={xFor(todayMs)}
+                x1={PAD_LEFT + colW * (todayIdx + 0.5)}
+                x2={PAD_LEFT + colW * (todayIdx + 0.5)}
                 y1={PAD_TOP}
                 y2={PAD_TOP + plotH}
                 stroke="#00cc55"
                 strokeWidth={1}
-                opacity={0.45}
+                opacity={0.5}
                 strokeDasharray="2 3"
               />
             )}
-            {/* Area fill under the mood line */}
-            {areaPath && (
-              <path d={areaPath} fill={MOOD_LINE_FILL} />
-            )}
-            {/* Mood line */}
-            {linePath && (
-              <path
-                d={linePath}
-                fill="none"
-                stroke={MOOD_LINE_COLOR}
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {/* Dots — small dark halo + colored fill */}
-            {visiblePoints.map((p) => (
-              <g key={p.dateKey}>
-                <circle
-                  cx={xFor(p.ts)}
-                  cy={yFor(p.weighted)}
-                  r={4}
-                  fill="#0a0a0a"
-                />
-                <circle
-                  cx={xFor(p.ts)}
-                  cy={yFor(p.weighted)}
-                  r={3}
-                  fill={moodColorForScore(p.weighted)}
-                />
-              </g>
-            ))}
+            {/* Stacked bars — each day's 5 mood counts normalized
+                to a full bar height. Order bottom→top:
+                upset, anxious, sad, neutral, happy. */}
+            {visibleBars.map(({ i, bar }) => {
+              const x = PAD_LEFT + colW * i + barGap / 2;
+              let yCursor = PAD_TOP + plotH; // bottom of the bar
+              return (
+                <g key={bar.dateKey}>
+                  {MOOD_KEYS.map((k, j) => {
+                    const count = bar.counts[j];
+                    if (count <= 0) return null;
+                    const segH = (count / bar.total) * plotH;
+                    yCursor -= segH;
+                    return (
+                      <rect
+                        key={k}
+                        x={x}
+                        y={yCursor}
+                        width={barW}
+                        height={segH}
+                        fill={MOOD_COLORS[k]}
+                      />
+                    );
+                  })}
+                </g>
+              );
+            })}
           </svg>
         </div>
       </section>
