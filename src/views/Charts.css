@@ -102,6 +102,45 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Series toggle buttons in the chart header — click to hide a series */
+.chart-legend-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  background: transparent;
+  color: #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, opacity 0.12s, border-color 0.12s;
+}
+
+.chart-legend-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.chart-legend-toggle.off {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.chart-legend-mood-swatches {
+  display: inline-flex;
+  gap: 1px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.chart-legend-mood-swatches > span {
+  width: 4px;
+  height: 9px;
+  display: inline-block;
+}
+
 .chart-strip-range {
   font-size: 13px;
   color: #aaa;

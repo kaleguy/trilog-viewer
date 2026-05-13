@@ -41,7 +41,6 @@ const PAD_BOTTOM = 32;
 // Order in the stack from bottom→top: upset → anxious → sad → neutral → happy.
 // "Good mood" reads as taller green at the top of the bar.
 const MOOD_KEYS = ['upset', 'anxious', 'sad', 'neutral', 'happy'] as const;
-const MOOD_LABELS = ['Upset', 'Anxious', 'Sad', 'Neutral', 'Happy'] as const;
 
 const ENERGY_LINE_COLOR = '#FFCC44';
 
@@ -84,6 +83,9 @@ export function Charts({ conn }: Props) {
 
   const [endDate, setEndDate] = useState<Date>(() => thisOrNextSaturday(new Date()));
   const [windowWeeks, setWindowWeeks] = useState<number>(DEFAULT_WEEKS);
+  // Series visibility — single toggle per series, not per mood color.
+  const [showMood, setShowMood] = useState(true);
+  const [showEnergy, setShowEnergy] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,32 +301,44 @@ export function Charts({ conn }: Props) {
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 12,
+            gap: 8,
             fontSize: 11,
             color: '#aaa',
           }}>
-            {MOOD_KEYS.map((k, i) => (
-              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <span style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: 2,
-                  background: MOOD_COLORS[k],
-                  display: 'inline-block',
-                }} />
-                {MOOD_LABELS[i]}
+            <button
+              type="button"
+              className={`chart-legend-toggle${showMood ? '' : ' off'}`}
+              aria-pressed={showMood}
+              onClick={() => setShowMood((v) => !v)}
+              title={showMood ? 'Hide mood' : 'Show mood'}
+            >
+              <span className="chart-legend-mood-swatches">
+                {MOOD_KEYS.map((k) => (
+                  <span
+                    key={k}
+                    style={{ background: MOOD_COLORS[k] }}
+                  />
+                ))}
               </span>
-            ))}
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4 }}>
+              Mood
+            </button>
+            <button
+              type="button"
+              className={`chart-legend-toggle${showEnergy ? '' : ' off'}`}
+              aria-pressed={showEnergy}
+              onClick={() => setShowEnergy((v) => !v)}
+              title={showEnergy ? 'Hide energy' : 'Show energy'}
+            >
               <span style={{
-                width: 14,
-                height: 2,
+                width: 16,
+                height: 3,
                 background: ENERGY_LINE_COLOR,
                 display: 'inline-block',
-                borderRadius: 1,
+                borderRadius: 1.5,
+                boxShadow: '0 0 4px rgba(255,204,68,0.5)',
               }} />
               Energy
-            </span>
+            </button>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <button className="chart-nav-btn" type="button" onClick={stepBack} aria-label="Previous month">‹</button>
@@ -397,10 +411,9 @@ export function Charts({ conn }: Props) {
                 strokeDasharray="2 3"
               />
             )}
-            {/* Stacked bars — each day's 5 mood counts normalized
-                to a full bar height. Order bottom→top:
-                upset, anxious, sad, neutral, happy. */}
-            {visibleBars.map(({ i, bar }) => {
+            {/* Stacked mood bars — each day's 5 mood counts
+                normalized to a full bar height. */}
+            {showMood && visibleBars.map(({ i, bar }) => {
               const x = PAD_LEFT + colW * i + barGap / 2;
               let yCursor = PAD_TOP + plotH; // bottom of the bar
               return (
@@ -418,37 +431,50 @@ export function Charts({ conn }: Props) {
                         width={barW}
                         height={segH}
                         fill={MOOD_COLORS[k]}
+                        opacity={showEnergy ? 0.82 : 1}
                       />
                     );
                   })}
                 </g>
               );
             })}
-            {/* Energy line — drawn ON TOP of the bars so the dots
-                always read. Path is one element, dots are per-day. */}
-            {energyPath && (
-              <path
-                d={energyPath}
-                fill="none"
-                stroke={ENERGY_LINE_COLOR}
-                strokeWidth={1.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.9}
-              />
+            {/* Energy line — wider dark backdrop stroke first so the
+                yellow line pops against the colored bars regardless
+                of which mood it's crossing. */}
+            {showEnergy && energyPath && (
+              <>
+                <path
+                  d={energyPath}
+                  fill="none"
+                  stroke="#000"
+                  strokeWidth={4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.55}
+                />
+                <path
+                  d={energyPath}
+                  fill="none"
+                  stroke={ENERGY_LINE_COLOR}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </>
             )}
-            {visibleEnergy.map((p) => (
+            {showEnergy && visibleEnergy.map((p) => (
               <g key={`e-${p.i}`}>
                 <circle
                   cx={xForCol(p.i)}
                   cy={yForEnergy(p.level)}
-                  r={3}
-                  fill="#0a0a0a"
+                  r={3.5}
+                  fill="#000"
+                  opacity={0.7}
                 />
                 <circle
                   cx={xForCol(p.i)}
                   cy={yForEnergy(p.level)}
-                  r={2.2}
+                  r={2.4}
                   fill={ENERGY_COLORS[p.level] ?? ENERGY_LINE_COLOR}
                 />
               </g>
