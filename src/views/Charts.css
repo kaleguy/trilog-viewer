@@ -7,6 +7,66 @@
   overflow-y: auto;
 }
 
+/* New table-and-strips Charts layout */
+.charts-page {
+  padding: 16px;
+  color: #f0f0f0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+.charts-strips {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+.chart-card {
+  flex-shrink: 0;
+  height: 260px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0c0c0c, #060606);
+  padding: 12px 16px;
+}
+.chart-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+.chart-card-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ccc;
+}
+.chart-card-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-card-legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.chart-card-plot {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
 .chart-strip {
   flex-shrink: 0;
 }
@@ -139,6 +199,12 @@
   width: 4px;
   height: 9px;
   display: inline-block;
+}
+
+.chart-legend-toggle.small {
+  padding: 2px 6px;
+  font-size: 10px;
+  gap: 4px;
 }
 
 .chart-strip-range {
