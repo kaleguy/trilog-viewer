@@ -133,36 +133,17 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    // One Promise.all at mount. We deliberately do not fetch again
-    // on date change — all navigation slices these arrays.
-    Promise.all([
-      conn.select<DayRow[]>(
-        `SELECT dateKey, moodValues, energy, sleepQuality,
-                sleepDurationHours, sleepDurationMinutes, hkSleepDuration
-         FROM day_entries
-         ORDER BY dateKey ASC`,
-      ),
-      conn.select<{ timestamp: number; type: string; fillGaps: number }[]>(
-        `SELECT timestamp, type, fillGaps
-         FROM activity_entries
-         ORDER BY timestamp ASC`,
-      ),
-    ])
-      .then(([rows, acts]) => {
+    // DIAGNOSTIC: only the proven-working fetch — mood + energy.
+    // Sleep + activity data temporarily not loaded; their strips
+    // will render as empty shells so we can confirm the new layout
+    // by itself doesn't cause the freeze.
+    conn.select<DayRow[]>(
+      `SELECT dateKey, moodValues, energy FROM day_entries ORDER BY dateKey ASC`,
+    )
+      .then((rows) => {
         if (cancelled) return;
         setDayRows(rows);
-        setActivities(
-          acts.map((a) => ({
-            id: '',
-            timestamp: a.timestamp,
-            type: a.type,
-            duration: 0,
-            notes: null,
-            endTimestamp: null,
-            fillGaps: !!a.fillGaps,
-            isGapFiller: false,
-          })),
-        );
+        setActivities([]); // empty — Activity Mix strip shows an empty shell
         setLoading(false);
       })
       .catch((err) => {
