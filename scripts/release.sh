@@ -248,6 +248,12 @@ say "${GREEN}Released $TAG.${NC}"
 if [[ -n "$REPO_URL" ]]; then
   say "  $REPO_URL/releases/tag/$TAG"
 fi
+say ""
+say "${DIM}Windows installer is being built by GitHub Actions (.github/workflows/release-windows.yml).${NC}"
+say "${DIM}It will attach to this release in ~10 minutes. Track it at:${NC}"
+if [[ -n "$REPO_URL" ]]; then
+  say "  $REPO_URL/actions"
+fi
 
 # -- 13. Optional: update the trilog-netlify website
 if [[ "$DO_WEBSITE" == 1 ]]; then

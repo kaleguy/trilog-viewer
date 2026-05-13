@@ -1,0 +1,63 @@
+name: Build Windows installer
+
+# Triggered when scripts/release.sh pushes a vN.N.N tag. The macOS
+# build/sign/notarize/upload happens locally in the script; this
+# workflow builds the Windows NSIS installer on a GitHub-hosted
+# Windows runner and uploads the .exe to the same GitHub release.
+#
+# The installer is currently UNSIGNED — Windows SmartScreen will
+# show a warning on first launch. We'll add code signing later
+# once we have a cert.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      # Needed for softprops/action-gh-release to upload assets to
+      # the existing release.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+        continue-on-error: true # bun.lockb may not be committed
+
+      - name: Install JS dependencies (fallback)
+        run: bun install
+
+      - name: Build Tauri (Windows, NSIS)
+        # --bundles nsis overrides tauri.conf.json's default targets
+        # (which are macOS-only) and produces a Windows .exe installer.
+        run: bun run tauri build --bundles nsis
+
+      - name: List built artifacts (debug)
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path src-tauri\target\release\bundle\nsis -Recurse | Select-Object FullName
+
+      - name: Attach installer to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          fail_on_unmatched_files: true
