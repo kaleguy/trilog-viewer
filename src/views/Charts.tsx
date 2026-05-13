@@ -54,7 +54,24 @@ export function Charts({ conn }: Props) {
         if (Array.isArray(parsed)) arr = parsed as number[];
       } catch { /* ignore */ }
     }
-    return { dateKey: r.dateKey, arr };
+    // Weighted score: each slot's index 0..4 maps to position 1..5
+    // (upset=1, anxious=2, sad=3, neutral=4, happy=5). Score is the
+    // count-weighted mean of those positions — what the mood line
+    // on the chart plots.
+    let weighted: number | null = null;
+    if (arr && arr.length === 5) {
+      let num = 0;
+      let denom = 0;
+      for (let i = 0; i < 5; i++) {
+        const v = arr[i];
+        if (typeof v === 'number' && v > 0) {
+          num += (i + 1) * v;
+          denom += v;
+        }
+      }
+      if (denom > 0) weighted = Math.max(1, Math.min(5, num / denom));
+    }
+    return { dateKey: r.dateKey, arr, weighted };
   }), [rows]);
 
   return (
@@ -92,7 +109,8 @@ export function Charts({ conn }: Props) {
           }}>
             <tr style={{ textAlign: 'left' }}>
               <th style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', width: 140 }}>Date</th>
-              <th style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>moodValues [upset, anxious, sad, neutral, happy]</th>
+              <th style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', width: 300 }}>[upset, anxious, sad, neutral, happy]</th>
+              <th style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'right' }}>Weighted</th>
             </tr>
           </thead>
           <tbody>
@@ -103,6 +121,9 @@ export function Charts({ conn }: Props) {
                 </td>
                 <td style={{ padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                   {r.arr ? `[${r.arr.join(', ')}]` : '—'}
+                </td>
+                <td style={{ padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.04)', textAlign: 'right' }}>
+                  {r.weighted != null ? r.weighted.toFixed(2) : '—'}
                 </td>
               </tr>
             ))}
