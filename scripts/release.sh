@@ -237,8 +237,15 @@ say "${DIM}Tagging $TAG and pushing…${NC}"
 git tag -a "$TAG" -m "$TAG"
 git push origin "$TAG"
 
-say "${DIM}Creating GitHub release $TAG with .dmg attached…${NC}"
-gh release create "$TAG" "$DMG_PATH" \
+SAMPLE_DB_PATH="samples/sample-journal.db"
+RELEASE_ASSETS=("$DMG_PATH")
+if [[ -f "$SAMPLE_DB_PATH" ]]; then
+  RELEASE_ASSETS+=("$SAMPLE_DB_PATH")
+  say "${DIM}Attaching sample DB: $SAMPLE_DB_PATH${NC}"
+fi
+
+say "${DIM}Creating GitHub release $TAG with .dmg + sample DB attached…${NC}"
+gh release create "$TAG" "${RELEASE_ASSETS[@]}" \
   --title "$TAG" \
   --generate-notes
 

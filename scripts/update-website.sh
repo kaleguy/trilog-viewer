@@ -97,6 +97,12 @@ sed -i '' \
   "s|v${OLD_VERSION}/TriLog\.Viewer_${OLD_VERSION}_x64-setup\.exe|v${NEW_VERSION}/TriLog.Viewer_${NEW_VERSION}_x64-setup.exe|g" \
   viewer.html apps.html
 
+#   1c. Sample-journal.db release URL (filename is stable across versions,
+#       only the v* segment in the path changes).
+sed -i '' \
+  "s|releases/download/v${OLD_VERSION}/sample-journal\.db|releases/download/v${NEW_VERSION}/sample-journal.db|g" \
+  viewer.html
+
 #   2. The version pill in the hero meta line
 sed -i '' \
   "s|<span>v${OLD_VERSION}</span>|<span>v${NEW_VERSION}</span>|g" \
