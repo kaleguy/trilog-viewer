@@ -27,15 +27,17 @@ const DEFAULT_WEEKS = 24;
 
 // SVG viewBox dimensions — proportional, stretched to fit container.
 const VBOX_W = 1000;
-const VBOX_H = 200;
-const PAD_X = 20;
-const PAD_TOP = 12;
-const PAD_BOTTOM = 24;
+const VBOX_H = 220;
+const PAD_LEFT = 56;   // room for y-axis labels
+const PAD_RIGHT = 16;
+const PAD_TOP = 16;
+const PAD_BOTTOM = 28;
 const Y_MIN = 1;
 const Y_MAX = 5;
 
 const MOOD_LINE_COLOR = '#00DD66';
 const MOOD_POSITION_NAMES = ['upset', 'anxious', 'sad', 'neutral', 'happy'] as const;
+const MOOD_LABELS = ['Upset', 'Anxious', 'Sad', 'Neutral', 'Happy'] as const;
 function moodColorForScore(score: number): string {
   const idx = Math.max(0, Math.min(4, Math.round(score) - 1));
   return MOOD_COLORS[MOOD_POSITION_NAMES[idx]];
@@ -62,14 +64,16 @@ function thisOrNextSaturday(date: Date): Date {
   if (offset > 0) r.setDate(r.getDate() + offset);
   return r;
 }
-function isoWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
-
 const MONTH_FMT = new Intl.DateTimeFormat(undefined, { month: 'short' });
+const RANGE_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+const RANGE_YEAR_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+function formatRange(start: Date, end: Date): string {
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${RANGE_FMT.format(start)} – ${RANGE_FMT.format(end)}, ${end.getFullYear()}`;
+  }
+  return `${RANGE_YEAR_FMT.format(start)} – ${RANGE_YEAR_FMT.format(end)}`;
+}
 
 /**
  * Fetch the full day_entries.moodValues history ONCE on mount, then
@@ -154,11 +158,11 @@ export function Charts({ conn }: Props) {
   const windowStartMs = days[0].getTime();
   const windowEndMs = days[days.length - 1].getTime();
   const windowRangeMs = Math.max(1, windowEndMs - windowStartMs);
-  const plotW = VBOX_W - 2 * PAD_X;
+  const plotW = VBOX_W - PAD_LEFT - PAD_RIGHT;
   const plotH = VBOX_H - PAD_TOP - PAD_BOTTOM;
 
   function xFor(ts: number): number {
-    return PAD_X + ((ts - windowStartMs) / windowRangeMs) * plotW;
+    return PAD_LEFT + ((ts - windowStartMs) / windowRangeMs) * plotW;
   }
   function yFor(level: number): number {
     const t = (level - Y_MIN) / (Y_MAX - Y_MIN);
@@ -193,14 +197,17 @@ export function Charts({ conn }: Props) {
     return out;
   }, [days]);
 
+  // Step the window by a calendar month so each click moves a
+  // meaningful chunk — the previous one-week step felt fiddly across
+  // a 24-week view.
   const stepBack = () => {
     const d = new Date(endDate);
-    d.setDate(d.getDate() - 7);
+    d.setMonth(d.getMonth() - 1);
     setEndDate(d);
   };
   const stepForward = () => {
     const d = new Date(endDate);
-    d.setDate(d.getDate() + 7);
+    d.setMonth(d.getMonth() + 1);
     const cap = thisOrNextSaturday(new Date());
     setEndDate(d > cap ? cap : d);
   };
@@ -243,18 +250,31 @@ export function Charts({ conn }: Props) {
         display: 'flex',
         flexDirection: 'column',
         border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 8,
-        background: '#050505',
-        padding: 12,
+        borderRadius: 10,
+        background: 'linear-gradient(180deg, #0a0a0a, #050505)',
+        padding: '14px 18px 18px',
       }}>
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Mood</h3>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <button className="chart-nav-btn" type="button" onClick={stepBack} aria-label="Previous week">‹</button>
-            <span style={{ fontSize: 13, color: '#aaa', minWidth: 60, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-              Week {isoWeekNumber(endDate)}
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <h3 style={{
+            margin: 0,
+            fontSize: 13,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#ccc',
+          }}>Mood</h3>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <button className="chart-nav-btn" type="button" onClick={stepBack} aria-label="Previous month">‹</button>
+            <span style={{
+              fontSize: 13,
+              color: '#aaa',
+              minWidth: 160,
+              textAlign: 'center',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {formatRange(days[0], days[days.length - 1])}
             </span>
-            <button className="chart-nav-btn" type="button" onClick={stepForward} aria-label="Next week">›</button>
+            <button className="chart-nav-btn" type="button" onClick={stepForward} aria-label="Next month">›</button>
           </div>
         </header>
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
@@ -265,17 +285,31 @@ export function Charts({ conn }: Props) {
             height="100%"
             style={{ display: 'block', pointerEvents: 'none' }}
           >
+            {/* Y-axis labels and gridlines */}
             {[1, 2, 3, 4, 5].map((lvl) => (
-              <line
-                key={lvl}
-                x1={PAD_X}
-                x2={VBOX_W - PAD_X}
-                y1={yFor(lvl)}
-                y2={yFor(lvl)}
-                stroke="rgba(255,255,255,0.05)"
-                strokeWidth={0.5}
-              />
+              <g key={lvl}>
+                <line
+                  x1={PAD_LEFT}
+                  x2={VBOX_W - PAD_RIGHT}
+                  y1={yFor(lvl)}
+                  y2={yFor(lvl)}
+                  stroke="rgba(255,255,255,0.06)"
+                  strokeWidth={0.5}
+                  strokeDasharray={lvl === 3 ? '0' : '2 3'}
+                />
+                <text
+                  x={PAD_LEFT - 8}
+                  y={yFor(lvl) + 3}
+                  fill="#777"
+                  fontSize={8}
+                  textAnchor="end"
+                  fontWeight={lvl === 1 || lvl === 5 ? 600 : 400}
+                >
+                  {MOOD_LABELS[lvl - 1]}
+                </text>
+              </g>
             ))}
+            {/* Month tick marks + labels */}
             {monthTicks.map((t) => (
               <g key={t.ts}>
                 <line
@@ -283,20 +317,24 @@ export function Charts({ conn }: Props) {
                   x2={xFor(t.ts)}
                   y1={PAD_TOP}
                   y2={PAD_TOP + plotH}
-                  stroke="rgba(255,255,255,0.04)"
+                  stroke="rgba(255,255,255,0.05)"
                   strokeWidth={0.5}
                 />
                 <text
                   x={xFor(t.ts)}
-                  y={VBOX_H - 6}
-                  fill="#666"
+                  y={VBOX_H - 8}
+                  fill="#888"
                   fontSize={8}
+                  fontWeight={600}
+                  letterSpacing={0.5}
                   textAnchor="middle"
+                  style={{ textTransform: 'uppercase' }}
                 >
                   {t.label}
                 </text>
               </g>
             ))}
+            {/* Today marker */}
             {todayInWindow && (
               <line
                 x1={xFor(todayMs)}
@@ -304,27 +342,46 @@ export function Charts({ conn }: Props) {
                 y1={PAD_TOP}
                 y2={PAD_TOP + plotH}
                 stroke="#00cc55"
-                strokeWidth={0.6}
-                opacity={0.5}
+                strokeWidth={0.8}
+                opacity={0.4}
               />
             )}
+            {/* Subtle area fill under the mood line for visual weight */}
+            {linePath && visiblePoints.length > 1 && (
+              <path
+                d={`${linePath} L${xFor(visiblePoints[visiblePoints.length - 1].ts).toFixed(2)} ${(PAD_TOP + plotH).toFixed(2)} L${xFor(visiblePoints[0].ts).toFixed(2)} ${(PAD_TOP + plotH).toFixed(2)} Z`}
+                fill={MOOD_LINE_COLOR}
+                opacity={0.08}
+              />
+            )}
+            {/* Mood line */}
             {linePath && (
               <path
                 d={linePath}
                 fill="none"
                 stroke={MOOD_LINE_COLOR}
-                strokeWidth={1.4}
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
               />
             )}
+            {/* Dots — each one halo'd by a darker outline for contrast */}
             {visiblePoints.map((p) => (
-              <circle
-                key={p.dateKey}
-                cx={xFor(p.ts)}
-                cy={yFor(p.weighted)}
-                r={1.6}
-                fill={moodColorForScore(p.weighted)}
-              />
+              <g key={p.dateKey}>
+                <circle
+                  cx={xFor(p.ts)}
+                  cy={yFor(p.weighted)}
+                  r={2.4}
+                  fill="#050505"
+                />
+                <circle
+                  cx={xFor(p.ts)}
+                  cy={yFor(p.weighted)}
+                  r={1.8}
+                  fill={moodColorForScore(p.weighted)}
+                />
+              </g>
             ))}
           </svg>
         </div>
