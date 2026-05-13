@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
+import { getActivityEntries, type Conn_ } from '../db/queries';
 import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
@@ -96,8 +96,6 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
 // month-by-month with breathers so the tauri-plugin-sql IPC bridge
 // doesn't choke on a single SELECT * over the activity table. After
 // this initial load, date navigation is entirely in-memory.
-const WIDE_START = '1970-01-01';
-const WIDE_END = '2099-12-31';
 const MONTH_MS = 31 * 24 * 60 * 60 * 1000;
 
 interface ChartsBundle {
@@ -111,9 +109,18 @@ function loadChartsBundle(conn: Conn_): Promise<ChartsBundle> {
   if (cached) return cached;
   const p = (async () => {
     const breather = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    // 1) day_entries: single SELECT for the full range. Even a year
-    //    is only ~360 rows; small payload, fine in one shot.
-    const rows = await getDayEntriesRange(conn, WIDE_START, WIDE_END);
+    // 1) day_entries: only the columns the strips actually read.
+    //    The default getDayEntriesRange returns 25 columns including
+    //    four fat JSON-blob columns (pressureData/pollenData/
+    //    airQualityData/uvData) the chart strips don't use — at 360
+    //    rows that's a ~300KB IPC payload that chokes the bridge.
+    //    Slim down to what we need: ~10 small fields, <50KB total.
+    const rows = await conn.select<DayEntryRow[]>(
+      `SELECT dateKey, mood, moodValues, energy, wellnessLevel,
+              sleepQuality, sleepDurationHours, sleepDurationMinutes,
+              hkSleepDuration
+       FROM day_entries`,
+    );
     await breather(100);
     // 2) activity_entries: chunk by month for the last 13 months.
     //    Each chunk returns ~200 rows max — small payload, no IPC
