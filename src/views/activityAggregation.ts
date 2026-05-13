@@ -5,12 +5,6 @@ export interface ActivityTotals {
   byType: Map<string, number>;
 }
 
-function startOfLocalDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function dateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -32,7 +26,6 @@ function dateKey(d: Date): string {
 export function aggregateActivities(activities: ActivityEntry[]): Map<string, ActivityTotals> {
   const out = new Map<string, ActivityTotals>();
   const HOUR_MS = 60 * 60 * 1000;
-  const DAY_MS = 24 * HOUR_MS;
   const sorted = [...activities].sort((a, b) => a.timestamp - b.timestamp);
 
   for (let i = 0; i < sorted.length; i++) {
@@ -57,11 +50,26 @@ export function aggregateActivities(activities: ActivityEntry[]): Map<string, Ac
     const type = entry.type.toLowerCase();
     let cursor = start;
     while (cursor < end) {
-      const dayStart = startOfLocalDay(new Date(cursor)).getTime();
-      const dayEnd = dayStart + DAY_MS;
+      // Compute "start of NEXT local day" via calendar arithmetic,
+      // NOT cursor + 24*hours. On DST fall-back days the local day
+      // is 25 hours long, so dayStart + 24h lands inside the same
+      // local day — cursor never advances and the loop spins forever.
+      const cursorDate = new Date(cursor);
+      const nextDayDate = new Date(
+        cursorDate.getFullYear(),
+        cursorDate.getMonth(),
+        cursorDate.getDate() + 1,
+      );
+      const dayEnd = nextDayDate.getTime();
       const sliceEnd = Math.min(end, dayEnd);
+      if (sliceEnd <= cursor) {
+        // Defensive guard in case the timezone arithmetic still
+        // doesn't advance for some pathological input. Bail rather
+        // than freeze the renderer.
+        break;
+      }
       const hours = (sliceEnd - cursor) / HOUR_MS;
-      const k = dateKey(new Date(cursor));
+      const k = dateKey(cursorDate);
       let bucket = out.get(k);
       if (!bucket) {
         bucket = { byType: new Map() };

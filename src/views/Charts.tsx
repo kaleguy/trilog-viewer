@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { type Conn_ } from '../db/queries';
 import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
-import { type ActivityTotals } from './activityAggregation';
+import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
 interface Props {
@@ -117,15 +117,22 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    // ACTIVITY-ONLY mode: skip day_entries, fetch only activity_entries.
-    conn.select<{ timestamp: number; type: string; fillGaps: number }[]>(
-      `SELECT timestamp, type, fillGaps
-       FROM activity_entries
-       ORDER BY timestamp ASC`,
-    )
-      .then((acts) => {
+    Promise.all([
+      conn.select<DayRow[]>(
+        `SELECT dateKey, moodValues, energy, sleepQuality,
+                sleepDurationHours, sleepDurationMinutes, hkSleepDuration
+         FROM day_entries
+         ORDER BY dateKey ASC`,
+      ),
+      conn.select<{ timestamp: number; type: string; fillGaps: number }[]>(
+        `SELECT timestamp, type, fillGaps
+         FROM activity_entries
+         ORDER BY timestamp ASC`,
+      ),
+    ])
+      .then(([rows, acts]) => {
         if (cancelled) return;
-        setDayRows([]);
+        setDayRows(rows);
         setActivities(
           acts.map((a) => ({
             id: '',
@@ -189,13 +196,10 @@ export function Charts({ conn }: Props) {
     return m;
   }, [dayRows]);
 
-  // DIAGNOSTIC: skip aggregateActivities. If even this stops the
-  // freeze, the freeze is in aggregateActivities. If it still
-  // freezes, the fetch / setActivities path itself is the cause.
-  const activityTotals = useMemo<Map<string, ActivityTotals>>(() => new Map(), []);
-  // keep `activities` referenced so its setter still runs, but don't
-  // do any work on it.
-  void activities;
+  const activityTotals = useMemo<Map<string, ActivityTotals>>(() => {
+    if (!activities.length) return new Map();
+    return aggregateActivities(activities);
+  }, [activities]);
 
   const days = useMemo(() => {
     const n = windowWeeks * 7;
@@ -274,34 +278,29 @@ export function Charts({ conn }: Props) {
       </div>
 
       <div className="charts-strips">
-        {/* Focus mode: only the Activity Mix strip is rendered. */}
+        <MoodMixStrip
+          days={days}
+          monthTicks={monthTicks}
+          todayIdx={todayIdx}
+          moodBarsByDate={moodBarsByDate}
+          energyByDate={energyByDate}
+          showMood={showMood}
+          showEnergy={showEnergy}
+          onToggleMood={() => setShowMood((v) => !v)}
+          onToggleEnergy={() => setShowEnergy((v) => !v)}
+        />
+        <SleepStrip
+          days={days}
+          monthTicks={monthTicks}
+          todayIdx={todayIdx}
+          sleepByDate={sleepByDate}
+        />
         <ActivityStrip
           days={days}
           monthTicks={monthTicks}
           todayIdx={todayIdx}
           activityTotals={activityTotals}
         />
-        {false && (
-          <>
-            <MoodMixStrip
-              days={days}
-              monthTicks={monthTicks}
-              todayIdx={todayIdx}
-              moodBarsByDate={moodBarsByDate}
-              energyByDate={energyByDate}
-              showMood={showMood}
-              showEnergy={showEnergy}
-              onToggleMood={() => setShowMood((v) => !v)}
-              onToggleEnergy={() => setShowEnergy((v) => !v)}
-            />
-            <SleepStrip
-              days={days}
-              monthTicks={monthTicks}
-              todayIdx={todayIdx}
-              sleepByDate={sleepByDate}
-            />
-          </>
-        )}
       </div>
     </div>
   );
@@ -678,29 +677,33 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
     </div>
   );
 
-  // DIAGNOSTIC: reference the computed segs map so its useMemo
-  // still runs and registers as work, but don't actually draw the
-  // bars in the SVG. Tells us whether the freeze is in the data
-  // path (fetch + aggregate + slice) or the SVG render itself.
-  const totalSegCount = useMemo(() => {
-    let n = 0;
-    for (const arr of segsByType.values()) n += arr.length;
-    return n;
-  }, [segsByType]);
-
   return (
     <ChartStrip
-      title={`Activity Mix · build-AC03 · ${activityTotals.size} act-days · ${totalSegCount} segs`}
+      title="Activity Mix"
       legend={legend}
       days={days}
       monthTicks={monthTicks}
       todayIdx={todayIdx}
     >
-      {({ plotH, w }) => {
+      {({ plotH, colW, barGap, barW, w }) => {
         const yForHours = (hours: number) => {
           const clamped = Math.min(hours, ACTIVITY_Y_MAX);
           return PAD_TOP + plotH * (1 - clamped / ACTIVITY_Y_MAX);
         };
+        const paths: { type: string; d: string }[] = [];
+        for (const t of ACTIVITY_STACK_ORDER) {
+          const segs = segsByType.get(t);
+          if (!segs || segs.length === 0) continue;
+          let d = '';
+          for (const seg of segs) {
+            const x1 = PAD_LEFT + colW * seg.i + barGap / 2;
+            const x2 = x1 + barW;
+            const y1 = yForHours(seg.baseHours + seg.hours);
+            const y2 = yForHours(seg.baseHours);
+            d += `M${x1.toFixed(2)} ${y1.toFixed(2)}H${x2.toFixed(2)}V${y2.toFixed(2)}H${x1.toFixed(2)}Z`;
+          }
+          paths.push({ type: t, d });
+        }
         return (
           <>
             {[6, 12, 18, 24].map((h) => (
@@ -716,8 +719,13 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
                 <text x={PAD_LEFT + 2} y={yForHours(h) - 2} fill="#666" fontSize={9}>{h}h</text>
               </g>
             ))}
-            {/* Activity bars deliberately NOT rendered for this
-                diagnostic — only the axis lines + month ticks. */}
+            {paths.map(({ type, d }) => (
+              <path
+                key={type}
+                d={d}
+                fill={ACTIVITY_COLORS[type] ?? ACTIVITY_COLORS.other ?? '#767676'}
+              />
+            ))}
           </>
         );
       }}
