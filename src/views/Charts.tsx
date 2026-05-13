@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { type Conn_ } from '../db/queries';
 import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
-import { aggregateActivities, type ActivityTotals } from './activityAggregation';
+import { type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
 interface Props {
@@ -189,10 +189,13 @@ export function Charts({ conn }: Props) {
     return m;
   }, [dayRows]);
 
-  const activityTotals = useMemo<Map<string, ActivityTotals>>(() => {
-    if (!activities.length) return new Map();
-    return aggregateActivities(activities);
-  }, [activities]);
+  // DIAGNOSTIC: skip aggregateActivities. If even this stops the
+  // freeze, the freeze is in aggregateActivities. If it still
+  // freezes, the fetch / setActivities path itself is the cause.
+  const activityTotals = useMemo<Map<string, ActivityTotals>>(() => new Map(), []);
+  // keep `activities` referenced so its setter still runs, but don't
+  // do any work on it.
+  void activities;
 
   const days = useMemo(() => {
     const n = windowWeeks * 7;
@@ -687,7 +690,7 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
 
   return (
     <ChartStrip
-      title={`Activity Mix · build-AC02 · ${activityTotals.size} act-days · ${totalSegCount} segs`}
+      title={`Activity Mix · build-AC03 · ${activityTotals.size} act-days · ${totalSegCount} segs`}
       legend={legend}
       days={days}
       monthTicks={monthTicks}
