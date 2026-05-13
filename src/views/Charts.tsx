@@ -117,22 +117,15 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      conn.select<DayRow[]>(
-        `SELECT dateKey, moodValues, energy, sleepQuality,
-                sleepDurationHours, sleepDurationMinutes, hkSleepDuration
-         FROM day_entries
-         ORDER BY dateKey ASC`,
-      ),
-      conn.select<{ timestamp: number; type: string; fillGaps: number }[]>(
-        `SELECT timestamp, type, fillGaps
-         FROM activity_entries
-         ORDER BY timestamp ASC`,
-      ),
-    ])
-      .then(([rows, acts]) => {
+    // ACTIVITY-ONLY mode: skip day_entries, fetch only activity_entries.
+    conn.select<{ timestamp: number; type: string; fillGaps: number }[]>(
+      `SELECT timestamp, type, fillGaps
+       FROM activity_entries
+       ORDER BY timestamp ASC`,
+    )
+      .then((acts) => {
         if (cancelled) return;
-        setDayRows(rows);
+        setDayRows([]);
         setActivities(
           acts.map((a) => ({
             id: '',
@@ -278,29 +271,34 @@ export function Charts({ conn }: Props) {
       </div>
 
       <div className="charts-strips">
-        <MoodMixStrip
-          days={days}
-          monthTicks={monthTicks}
-          todayIdx={todayIdx}
-          moodBarsByDate={moodBarsByDate}
-          energyByDate={energyByDate}
-          showMood={showMood}
-          showEnergy={showEnergy}
-          onToggleMood={() => setShowMood((v) => !v)}
-          onToggleEnergy={() => setShowEnergy((v) => !v)}
-        />
-        <SleepStrip
-          days={days}
-          monthTicks={monthTicks}
-          todayIdx={todayIdx}
-          sleepByDate={sleepByDate}
-        />
+        {/* Focus mode: only the Activity Mix strip is rendered. */}
         <ActivityStrip
           days={days}
           monthTicks={monthTicks}
           todayIdx={todayIdx}
           activityTotals={activityTotals}
         />
+        {false && (
+          <>
+            <MoodMixStrip
+              days={days}
+              monthTicks={monthTicks}
+              todayIdx={todayIdx}
+              moodBarsByDate={moodBarsByDate}
+              energyByDate={energyByDate}
+              showMood={showMood}
+              showEnergy={showEnergy}
+              onToggleMood={() => setShowMood((v) => !v)}
+              onToggleEnergy={() => setShowEnergy((v) => !v)}
+            />
+            <SleepStrip
+              days={days}
+              monthTicks={monthTicks}
+              todayIdx={todayIdx}
+              sleepByDate={sleepByDate}
+            />
+          </>
+        )}
       </div>
     </div>
   );
@@ -628,18 +626,11 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
     [hidden],
   );
 
-  // Build a `d` string per activity type — every day's segment for
-  // that type concatenated into one <path>. Drops the SVG node count
-  // from ~1,000 individual <rect>s to ~10 <path>s, which dramatically
-  // reduces WebKit's render cost on mount.
-  const pathByType = useMemo(() => {
-    const out = new Map<string, string>();
-    const colW = 1; // placeholder; recomputed below in the SVG with actual size
-
-    // We can't compute coordinates here without the SVG size. Instead
-    // return a per-day list and let the renderer build the d-strings.
-    void colW;
-    const segs = new Map<string, { i: number; baseHours: number; hours: number }[]>();
+  // Build per-type segment lists. The actual path d-strings get
+  // computed inside the SVG renderer where we have real pixel
+  // coordinates. This memo just slices the pre-aggregated totals.
+  const segsByType = useMemo(() => {
+    const out = new Map<string, { i: number; baseHours: number; hours: number }[]>();
     for (let i = 0; i < days.length; i++) {
       const totals = activityTotals.get(dateKey(days[i]));
       if (!totals) continue;
@@ -648,17 +639,14 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
         const hrs = totals.byType.get(t);
         if (!hrs || hrs <= 0) continue;
         const cap = Math.min(ACTIVITY_Y_MAX, running + hrs);
-        let arr = segs.get(t);
-        if (!arr) { arr = []; segs.set(t, arr); }
+        let arr = out.get(t);
+        if (!arr) { arr = []; out.set(t, arr); }
         arr.push({ i, baseHours: running, hours: cap - running });
         running = cap;
         if (running >= ACTIVITY_Y_MAX) break;
       }
     }
-    for (const [t, arr] of segs) out.set(t, JSON.stringify(arr)); // pass through (stringify is just a sentinel)
-    // We actually return segs, not stringified. Fix that.
-    void out;
-    return segs;
+    return out;
   }, [days, activityTotals, visibleTypes]);
 
   const legend = (
@@ -703,7 +691,7 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
         // Build the path d-string for each type at actual coordinates.
         const paths: { type: string; d: string }[] = [];
         for (const t of ACTIVITY_STACK_ORDER) {
-          const segs = pathByType.get(t);
+          const segs = segsByType.get(t);
           if (!segs || segs.length === 0) continue;
           let d = '';
           for (const seg of segs) {
