@@ -13,6 +13,15 @@ on:
   push:
     tags:
       - 'v*'
+  # Allow running by hand against an existing tag — useful for
+  # back-filling Windows builds for tags pushed before this workflow
+  # existed.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v1.1.2). Must already exist on origin.'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -24,6 +33,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # For tag pushes the default ref is the tag itself. For
+          # workflow_dispatch we explicitly check out the requested
+          # tag so the build matches that version.
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -58,6 +72,8 @@ jobs:
       - name: Attach installer to GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          # github.ref_name is the tag for push events; for manual
+          # dispatch we use the input.
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: src-tauri/target/release/bundle/nsis/*-setup.exe
           fail_on_unmatched_files: true
