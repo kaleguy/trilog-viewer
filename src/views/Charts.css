@@ -86,7 +86,8 @@
   gap: 8px;
 }
 
-.chart-strip-nav button {
+.chart-strip-nav button,
+.chart-nav-btn {
   padding: 4px 10px;
   font-size: 14px;
   background: transparent;
@@ -96,7 +97,8 @@
   cursor: pointer;
 }
 
-.chart-strip-nav button:hover {
+.chart-strip-nav button:hover,
+.chart-nav-btn:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
