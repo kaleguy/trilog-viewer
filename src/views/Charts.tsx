@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Conn_ } from '../db/queries';
-import { MOOD_COLORS } from '../db/types';
+import { ENERGY_COLORS, MOOD_COLORS } from '../db/types';
 import './Charts.css';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
 interface RawRow {
   dateKey: string;
   moodValues: string | null;
+  energy: number | null;
 }
 
 interface DayBars {
@@ -18,6 +19,11 @@ interface DayBars {
   // 5-tuple of mood counts: [upset, anxious, sad, neutral, happy]
   counts: number[];
   total: number;
+}
+
+interface DayEnergy {
+  dateKey: string;
+  level: number; // 1..5
 }
 
 const WINDOW_OPTIONS: { weeks: number; label: string }[] = [
@@ -36,6 +42,8 @@ const PAD_BOTTOM = 32;
 // "Good mood" reads as taller green at the top of the bar.
 const MOOD_KEYS = ['upset', 'anxious', 'sad', 'neutral', 'happy'] as const;
 const MOOD_LABELS = ['Upset', 'Anxious', 'Sad', 'Neutral', 'Happy'] as const;
+
+const ENERGY_LINE_COLOR = '#FFCC44';
 
 function dateKey(d: Date): string {
   const y = d.getFullYear();
@@ -80,7 +88,7 @@ export function Charts({ conn }: Props) {
   useEffect(() => {
     let cancelled = false;
     conn.select<RawRow[]>(
-      `SELECT dateKey, moodValues FROM day_entries ORDER BY dateKey ASC`,
+      `SELECT dateKey, moodValues, energy FROM day_entries ORDER BY dateKey ASC`,
     )
       .then((r) => {
         if (cancelled) return;
@@ -121,6 +129,16 @@ export function Charts({ conn }: Props) {
     for (const b of allBars) m.set(b.dateKey, b);
     return m;
   }, [allBars]);
+
+  const energyByDate = useMemo(() => {
+    const m = new Map<string, DayEnergy>();
+    for (const r of rows) {
+      if (r.energy != null && r.energy >= 1 && r.energy <= 5) {
+        m.set(r.dateKey, { dateKey: r.dateKey, level: r.energy });
+      }
+    }
+    return m;
+  }, [rows]);
 
   const days = useMemo(() => {
     const dayCount = windowWeeks * 7;
@@ -185,6 +203,36 @@ export function Charts({ conn }: Props) {
     }
     return out;
   }, [days, barsByDate]);
+
+  const visibleEnergy = useMemo(() => {
+    const out: { i: number; level: number }[] = [];
+    for (let i = 0; i < days.length; i++) {
+      const e = energyByDate.get(dateKey(days[i]));
+      if (e) out.push({ i, level: e.level });
+    }
+    return out;
+  }, [days, energyByDate]);
+
+  // Map energy level 1..5 to plot Y. 5 sits near the top, 1 near
+  // the bottom — same orientation as the mood stack reads (good
+  // moods rise, high energy rises).
+  const yForEnergy = (level: number) => {
+    const t = (level - 1) / 4;
+    return PAD_TOP + (1 - t) * plotH;
+  };
+  const xForCol = (idx: number) => PAD_LEFT + colW * (idx + 0.5);
+
+  const energyPath = useMemo(() => {
+    if (visibleEnergy.length === 0) return '';
+    // Build segments that only connect days where energy is present.
+    // A gap of more than one day still gets connected to keep the
+    // line readable; if you want strict missing-day breaks, swap to
+    // checking i delta below.
+    return visibleEnergy
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${xForCol(p.i).toFixed(2)} ${yForEnergy(p.level).toFixed(2)}`)
+      .join(' ');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleEnergy, w, h, colW]);
 
   const todayIdx = useMemo(() => {
     const t = startOfLocalDay(new Date()).getTime();
@@ -267,6 +315,16 @@ export function Charts({ conn }: Props) {
                 {MOOD_LABELS[i]}
               </span>
             ))}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4 }}>
+              <span style={{
+                width: 14,
+                height: 2,
+                background: ENERGY_LINE_COLOR,
+                display: 'inline-block',
+                borderRadius: 1,
+              }} />
+              Energy
+            </span>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <button className="chart-nav-btn" type="button" onClick={stepBack} aria-label="Previous month">‹</button>
@@ -366,6 +424,35 @@ export function Charts({ conn }: Props) {
                 </g>
               );
             })}
+            {/* Energy line — drawn ON TOP of the bars so the dots
+                always read. Path is one element, dots are per-day. */}
+            {energyPath && (
+              <path
+                d={energyPath}
+                fill="none"
+                stroke={ENERGY_LINE_COLOR}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.9}
+              />
+            )}
+            {visibleEnergy.map((p) => (
+              <g key={`e-${p.i}`}>
+                <circle
+                  cx={xForCol(p.i)}
+                  cy={yForEnergy(p.level)}
+                  r={3}
+                  fill="#0a0a0a"
+                />
+                <circle
+                  cx={xForCol(p.i)}
+                  cy={yForEnergy(p.level)}
+                  r={2.2}
+                  fill={ENERGY_COLORS[p.level] ?? ENERGY_LINE_COLOR}
+                />
+              </g>
+            ))}
           </svg>
         </div>
       </section>
