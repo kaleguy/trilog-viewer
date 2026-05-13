@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { getActivityEntries, getDayEntriesRange, type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -92,15 +92,13 @@ function computeDailyMood(row: { mood: string | null; moodValues: string | null 
   return null;
 }
 
-// Fetch ALL day_entries + ALL activity_entries once per opened DB
-// and pre-aggregate activities into per-day totals. Date navigation
-// then just hands the strips the same pre-built maps; the strips
-// look up by dateKey so showing data outside the visible window is
-// harmless. Net per-click cost: building a new days[] array and
-// re-rendering memoized SVGs.
+// Load all day_entries + activity_entries ONCE per opened DB, chunked
+// month-by-month with breathers so the tauri-plugin-sql IPC bridge
+// doesn't choke on a single SELECT * over the activity table. After
+// this initial load, date navigation is entirely in-memory.
 const WIDE_START = '1970-01-01';
 const WIDE_END = '2099-12-31';
-const WIDE_MS = 4102444800000; // 2100-01-01 in ms
+const MONTH_MS = 31 * 24 * 60 * 60 * 1000;
 
 interface ChartsBundle {
   rowsByDate: Map<string, DayEntryRow>;
@@ -112,11 +110,26 @@ function loadChartsBundle(conn: Conn_): Promise<ChartsBundle> {
   const cached = chartsBundleCache.get(conn as unknown as object);
   if (cached) return cached;
   const p = (async () => {
+    const breather = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    // 1) day_entries: single SELECT for the full range. Even a year
+    //    is only ~360 rows; small payload, fine in one shot.
     const rows = await getDayEntriesRange(conn, WIDE_START, WIDE_END);
-    const activities = await getActivityEntries(conn, 0, WIDE_MS);
+    await breather(100);
+    // 2) activity_entries: chunk by month for the last 13 months.
+    //    Each chunk returns ~200 rows max — small payload, no IPC
+    //    backlog. 13 months covers any 1y view ending today.
+    const now = Date.now();
+    const allActivities: ActivityEntry[] = [];
+    for (let i = 0; i < 13; i++) {
+      const chunkEnd = now - i * MONTH_MS + MONTH_MS;
+      const chunkStart = chunkEnd - MONTH_MS - 2 * 24 * 60 * 60 * 1000; // 2-day pad
+      const chunk = await getActivityEntries(conn, chunkStart, chunkEnd);
+      allActivities.push(...chunk);
+      if (i < 12) await breather(150);
+    }
     const rowsByDate = new Map<string, DayEntryRow>();
     for (const r of rows) rowsByDate.set(r.dateKey, r);
-    const activityTotals = aggregateActivities(activities);
+    const activityTotals = aggregateActivities(allActivities);
     return { rowsByDate, activityTotals };
   })();
   chartsBundleCache.set(conn as unknown as object, p);
