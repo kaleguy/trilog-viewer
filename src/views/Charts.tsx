@@ -133,18 +133,31 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    // DIAGNOSTIC step 2: add sleep columns. Still no activity_entries
-    // fetch — activity strip stays empty for now.
-    conn.select<DayRow[]>(
-      `SELECT dateKey, moodValues, energy, sleepQuality,
-              sleepDurationHours, sleepDurationMinutes, hkSleepDuration
-       FROM day_entries
-       ORDER BY dateKey ASC`,
+    // DIAGNOSTIC step 3: only fetch activity_entries; skip day_entries.
+    // Mood/Energy and Sleep strips will be hidden in the render so
+    // we can see the activity strip alone — and find out whether the
+    // activity_entries fetch (+ aggregateActivities + many stacked
+    // <rect>s) is what triggered the freeze.
+    conn.select<{ timestamp: number; type: string; fillGaps: number }[]>(
+      `SELECT timestamp, type, fillGaps
+       FROM activity_entries
+       ORDER BY timestamp ASC`,
     )
-      .then((rows) => {
+      .then((acts) => {
         if (cancelled) return;
-        setDayRows(rows);
-        setActivities([]);
+        setDayRows([]);
+        setActivities(
+          acts.map((a) => ({
+            id: '',
+            timestamp: a.timestamp,
+            type: a.type,
+            duration: 0,
+            notes: null,
+            endTimestamp: null,
+            fillGaps: !!a.fillGaps,
+            isGapFiller: false,
+          })),
+        );
         setLoading(false);
       })
       .catch((err) => {
@@ -281,29 +294,34 @@ export function Charts({ conn }: Props) {
       </div>
 
       <div className="charts-strips">
-        <MoodMixStrip
-          days={days}
-          monthTicks={monthTicks}
-          todayIdx={todayIdx}
-          moodBarsByDate={moodBarsByDate}
-          energyByDate={energyByDate}
-          showMood={showMood}
-          showEnergy={showEnergy}
-          onToggleMood={() => setShowMood((v) => !v)}
-          onToggleEnergy={() => setShowEnergy((v) => !v)}
-        />
-        <SleepStrip
-          days={days}
-          monthTicks={monthTicks}
-          todayIdx={todayIdx}
-          sleepByDate={sleepByDate}
-        />
+        {/* DIAGNOSTIC step 3 — only Activity Mix is rendered. */}
         <ActivityStrip
           days={days}
           monthTicks={monthTicks}
           todayIdx={todayIdx}
           activityTotals={activityTotals}
         />
+        {false && (
+          <>
+            <MoodMixStrip
+              days={days}
+              monthTicks={monthTicks}
+              todayIdx={todayIdx}
+              moodBarsByDate={moodBarsByDate}
+              energyByDate={energyByDate}
+              showMood={showMood}
+              showEnergy={showEnergy}
+              onToggleMood={() => setShowMood((v) => !v)}
+              onToggleEnergy={() => setShowEnergy((v) => !v)}
+            />
+            <SleepStrip
+              days={days}
+              monthTicks={monthTicks}
+              todayIdx={todayIdx}
+              sleepByDate={sleepByDate}
+            />
+          </>
+        )}
       </div>
     </div>
   );
