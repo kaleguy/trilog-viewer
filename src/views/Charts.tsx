@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { type Conn_ } from '../db/queries';
-import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry, type DayEntryRow } from '../db/types';
+import { ACTIVITY_COLORS, ENERGY_COLORS, MOOD_COLORS, type ActivityEntry } from '../db/types';
 import { aggregateActivities, type ActivityTotals } from './activityAggregation';
 import './Charts.css';
 
@@ -734,5 +734,3 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
   );
 }
 
-// keep DayEntryRow import alive even if we don't directly reference it
-void (null as unknown as DayEntryRow);
