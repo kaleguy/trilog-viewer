@@ -133,17 +133,18 @@ export function Charts({ conn }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    // DIAGNOSTIC: only the proven-working fetch — mood + energy.
-    // Sleep + activity data temporarily not loaded; their strips
-    // will render as empty shells so we can confirm the new layout
-    // by itself doesn't cause the freeze.
+    // DIAGNOSTIC step 2: add sleep columns. Still no activity_entries
+    // fetch — activity strip stays empty for now.
     conn.select<DayRow[]>(
-      `SELECT dateKey, moodValues, energy FROM day_entries ORDER BY dateKey ASC`,
+      `SELECT dateKey, moodValues, energy, sleepQuality,
+              sleepDurationHours, sleepDurationMinutes, hkSleepDuration
+       FROM day_entries
+       ORDER BY dateKey ASC`,
     )
       .then((rows) => {
         if (cancelled) return;
         setDayRows(rows);
-        setActivities([]); // empty — Activity Mix strip shows an empty shell
+        setActivities([]);
         setLoading(false);
       })
       .catch((err) => {
