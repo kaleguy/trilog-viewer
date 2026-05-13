@@ -675,34 +675,29 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
     </div>
   );
 
+  // DIAGNOSTIC: reference the computed segs map so its useMemo
+  // still runs and registers as work, but don't actually draw the
+  // bars in the SVG. Tells us whether the freeze is in the data
+  // path (fetch + aggregate + slice) or the SVG render itself.
+  const totalSegCount = useMemo(() => {
+    let n = 0;
+    for (const arr of segsByType.values()) n += arr.length;
+    return n;
+  }, [segsByType]);
+
   return (
     <ChartStrip
-      title="Activity Mix"
+      title={`Activity Mix · build-AC02 · ${activityTotals.size} act-days · ${totalSegCount} segs`}
       legend={legend}
       days={days}
       monthTicks={monthTicks}
       todayIdx={todayIdx}
     >
-      {({ plotH, colW, barGap, barW, w }) => {
+      {({ plotH, w }) => {
         const yForHours = (hours: number) => {
           const clamped = Math.min(hours, ACTIVITY_Y_MAX);
           return PAD_TOP + plotH * (1 - clamped / ACTIVITY_Y_MAX);
         };
-        // Build the path d-string for each type at actual coordinates.
-        const paths: { type: string; d: string }[] = [];
-        for (const t of ACTIVITY_STACK_ORDER) {
-          const segs = segsByType.get(t);
-          if (!segs || segs.length === 0) continue;
-          let d = '';
-          for (const seg of segs) {
-            const x1 = PAD_LEFT + colW * seg.i + barGap / 2;
-            const x2 = x1 + barW;
-            const y1 = yForHours(seg.baseHours + seg.hours);
-            const y2 = yForHours(seg.baseHours);
-            d += `M${x1.toFixed(2)} ${y1.toFixed(2)}H${x2.toFixed(2)}V${y2.toFixed(2)}H${x1.toFixed(2)}Z`;
-          }
-          paths.push({ type: t, d });
-        }
         return (
           <>
             {[6, 12, 18, 24].map((h) => (
@@ -718,13 +713,8 @@ function ActivityStrip({ days, monthTicks, todayIdx, activityTotals }: ActivityS
                 <text x={PAD_LEFT + 2} y={yForHours(h) - 2} fill="#666" fontSize={9}>{h}h</text>
               </g>
             ))}
-            {paths.map(({ type, d }) => (
-              <path
-                key={type}
-                d={d}
-                fill={ACTIVITY_COLORS[type] ?? ACTIVITY_COLORS.other ?? '#767676'}
-              />
-            ))}
+            {/* Activity bars deliberately NOT rendered for this
+                diagnostic — only the axis lines + month ticks. */}
           </>
         );
       }}
