@@ -1,0 +1,47 @@
+TriLog is the daily tracker you'll actually keep using. Two taps to log mood, energy, or an activity. One screen to see your whole day.
+
+WHAT YOU CAN TRACK
+
+- Mood (1–5) and energy (1–5) on one timeline
+- Activities color-coded by type
+- Quick notes for meals, health, or anything else
+- Sleep quality, duration, and how you woke up
+- Daily habits with streaks
+- Menstrual cycles tracked in the same timeline
+- Workouts with weights, cardio, and calisthenics
+
+NEW IN VERSION 3.0
+
+- Screen Time charted hour by hour — line it up with mood, energy, and activity
+- Siri Shortcuts — "Hey Siri, mood happy" logs entries hands-free
+- Scheduled check-ins at times you choose
+- Adjust entry times after you've logged them
+
+SEE YOUR DAY, YOUR WAY
+
+- Timeline: your entire day, color-coded, on one screen
+- Metrics Grid: compare weeks of mood, energy, sleep, steps, and Screen Time
+- Habits Grid: daily check-ins with streak tracking
+- Charts: activity breakdowns and long-term trends
+- Day View: sun clock, moon phase, and seasonal position
+- TriLog Viewer: free Mac and Windows companion to explore years of data on a bigger screen
+
+DESIGNED FOR SPEED
+
+Most trackers feel like work. TriLog takes seconds. No forms. No navigation. Two taps and you're done.
+
+PRO ($29.99/year)
+
+- Quick Track — one-tap favorites
+- Pomodoro focus timer
+- Hour-by-hour Screen Time
+- Siri Shortcuts
+- Scheduled check-in reminders
+- Polling reminders
+- Customize activity names, colors, and icons
+
+PRIVATE BY DEFAULT
+
+Your data stays on your device. No account. No cloud upload. No ads. No data mining. Optional iCloud backup.
+
+Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

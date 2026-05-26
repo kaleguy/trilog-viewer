@@ -1,0 +1,13 @@
+Version 3.4 — Trackers are now more flexible.
+
+NEW
+
+- Toggle trackers: track on/off states like "vegan day" or "screens off after 9pm" with a single tap
+- Cleaner tracker entry — type a key, get the value, done
+- The TriLog Viewer for Mac and Windows now shows your trackers alongside the rest of your data. Free download at trilog.app/viewer
+
+IMPROVED
+
+- (your bug fix / polish bullets here)
+
+Thanks for using TriLog. Your data stays on your device — no account, no cloud upload, no ads.
