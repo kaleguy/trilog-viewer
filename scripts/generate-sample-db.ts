@@ -305,12 +305,21 @@ db.transaction(() => {
     const month = day.getMonth();     // 0=Jan ... 11=Dec
 
     // -- Activities (sleep, work, weekend leisure, exercise Tue/Thu)
-    const sleepStart = at(day, 0, 0) - 1 * 3600000;
+    // Bedtime 10pm previous day, wake 6am. Sleep entry is attached
+    // to today but stamped at 22:00 of yesterday — it lands in
+    // yesterday's day-bucket and gets clipped at midnight. Today's
+    // first entry (leisure / coffee at 6am) has fillGaps=1, so the
+    // chart's cross-day continuation paints 00:00–06:00 as sleep.
+    //
+    // Avoid 'morning routine' here — that's a Pro-only tracker in
+    // the RN app for measuring get-out-of-bed time, not a default
+    // activity type a free user would see.
+    const sleepStart = at(day, 0, 0) - 2 * 3600000;
     insActivity.run(id('act-sleep', sleepStart), sleepStart, 'sleep', 8);
-    insActivity.run(id('act-mr', at(day, 7)), at(day, 7), 'morning routine', 1);
+    insActivity.run(id('act-leisure-am', at(day, 6)), at(day, 6), 'leisure', 1);
 
     if (!isWeekend && (dow === 2 || dow === 4)) {
-      insActivity.run(id('act-exercise', at(day, 6)), at(day, 6), 'exercise', 1);
+      insActivity.run(id('act-exercise', at(day, 6, 30)), at(day, 6, 30), 'exercise', 1);
     }
     if (!isWeekend) {
       insActivity.run(id('act-transit', at(day, 8, 30)), at(day, 8, 30), 'transit', 0.5);
